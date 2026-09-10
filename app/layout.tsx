@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: '熊貓雨衣隊｜接住今天的雨',
-  description: '選一隻熊貓，接住雨滴、避開雷電的手機小遊戲。',
+  title: '水窪跳跳｜熊貓雨衣隊',
+  description: '選一隻熊貓，用逐格跳躍動畫跨過雨天水窪。',
 };
 
 export default function RootLayout({

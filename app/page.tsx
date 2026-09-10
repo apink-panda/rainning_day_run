@@ -1,22 +1,27 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { CloudRain, Heart, RotateCcw, Shield, Sparkles, Timer } from 'lucide-react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { CloudRain, Footprints, Heart, RotateCcw, Sparkles, Timer } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
-type Panda = { id: string; name: string; image: string; color: string; pale: string; ability: string; detail: string };
-type Drop = { id: number; x: number; y: number; speed: number; kind: 'rain' | 'storm' };
+type Panda = { id: string; name: string; color: string; pale: string; power: string };
+type Puddle = { id: number; x: number; width: number };
 type WebGameContext = { registerTool: (tool: { name: string; title: string; description: string; inputSchema: object; annotations: { readOnlyHint: boolean; untrustedContentHint: boolean }; execute: (input: unknown) => unknown }, options?: { signal?: AbortSignal }) => void | Promise<void> };
 
 const pandas: Panda[] = [
-  { id: 'enji', name: 'Enji', image: '/enji.png', color: '#56baf0', pale: '#dff4ff', ability: '加分雨滴', detail: '每滴多得 5 分' },
-  { id: 'chorong', name: 'Chorong', image: '/chorong.png', color: '#f397b2', pale: '#ffe4ed', ability: '愛心雨衣', detail: '多一顆愛心' },
-  { id: 'najoo', name: 'Najoo', image: '/najoo.png', color: '#ae86d4', pale: '#f0e6fb', ability: '慢速雨雲', detail: '掉落速度較慢' },
-  { id: 'bomi', name: 'Bomi', image: '/bomi.png', color: '#f6aa37', pale: '#fff0d5', ability: '雨滴磁鐵', detail: '接取範圍更大' },
-  { id: 'hayoung', name: 'Hayoung', image: '/hayoung.png', color: '#f4cd43', pale: '#fff7cf', ability: '地瓜護盾', detail: '擋住一次雷電' },
+  { id: 'enji', name: 'Enji', color: '#58bff5', pale: '#dff4ff', power: '起跑加分' },
+  { id: 'chorong', name: 'Chorong', color: '#f39ab5', pale: '#ffe5ed', power: '多一顆愛心' },
+  { id: 'najoo', name: 'Najoo', color: '#ae85d5', pale: '#f1e7fb', power: '水窪速度較慢' },
+  { id: 'bomi', name: 'Bomi', color: '#f4aa38', pale: '#fff0d3', power: '跳躍時間更長' },
+  { id: 'hayoung', name: 'Hayoung', color: '#f3ce42', pale: '#fff7cf', power: '擋住一次失誤' },
 ];
 
-const GAME_SECONDS = 30;
+const GAME_SECONDS = 45;
+const jumpFrames = [1, 2, 2, 3, 3, 3, 4, 4, 5];
+
+function Sprite({ row, frame, className = '' }: { row: number; frame: number; className?: string }) {
+  return <span className={`panda-sprite ${className}`} style={{ '--frame-x': `${frame * 20}%`, '--row-y': `${row * 25}%` } as React.CSSProperties} aria-hidden="true" />;
+}
 
 export default function Home() {
   const [selected, setSelected] = useState(0);
@@ -24,55 +29,34 @@ export default function Home() {
   const [score, setScore] = useState(0);
   const [time, setTime] = useState(GAME_SECONDS);
   const [hearts, setHearts] = useState(3);
-  const [shield, setShield] = useState(false);
-  const [drops, setDrops] = useState<Drop[]>([]);
-  const [playerX, setPlayerX] = useState(50);
-  const [pop, setPop] = useState<string | null>(null);
-  const nextId = useRef(0);
-  const fieldRef = useRef<HTMLDivElement>(null);
-  const panda = pandas[selected];
+  const [puddles, setPuddles] = useState<Puddle[]>([]);
+  const [jumpY, setJumpY] = useState(0);
+  const [jumpFrame, setJumpFrame] = useState(0);
+  const [flash, setFlash] = useState<'good' | 'ouch' | null>(null);
+  const nextId = useRef(1);
+  const jumpStart = useRef<number | null>(null);
   const selectedRef = useRef(selected);
-  const playerXRef = useRef(playerX);
   const phaseRef = useRef(phase);
-  const shieldRef = useRef(shield);
+  const jumpYRef = useRef(0);
+  const shieldRef = useRef(false);
+  const lastTime = useRef(0);
+  const panda = pandas[selected];
 
   useEffect(() => { selectedRef.current = selected }, [selected]);
-  useEffect(() => { playerXRef.current = playerX }, [playerX]);
   useEffect(() => { phaseRef.current = phase }, [phase]);
-  useEffect(() => { shieldRef.current = shield }, [shield]);
+  useEffect(() => { jumpYRef.current = jumpY }, [jumpY]);
 
-  const startGame = useCallback(() => {
-    setScore(0); setTime(GAME_SECONDS); setHearts(selectedRef.current === 1 ? 4 : 3);
-    setShield(selectedRef.current === 4); setDrops([]); setPlayerX(50); setPop(null); setPhase('playing');
+  const startGame = useCallback((index = selectedRef.current) => {
+    selectedRef.current = index;
+    setSelected(index); setScore(index === 0 ? 50 : 0); setTime(GAME_SECONDS);
+    setHearts(index === 1 ? 4 : 3); setPuddles([]); setJumpY(0); setJumpFrame(0); setFlash(null);
+    jumpStart.current = null; shieldRef.current = index === 4; lastTime.current = performance.now(); setPhase('playing');
   }, []);
 
-  useEffect(() => {
-    const context = (document as Document & { modelContext?: WebGameContext }).modelContext;
-    if (!context?.registerTool) return;
-    const lifecycle = new AbortController();
-    void Promise.resolve(context.registerTool({
-      name: 'start_panda_rain_game',
-      title: '開始熊貓雨衣隊遊戲',
-      description: '選擇一隻熊貓並立即開始一局 30 秒的接雨遊戲。',
-      inputSchema: {
-        type: 'object',
-        properties: { panda: { type: 'string', enum: pandas.map((item) => item.id) } },
-        required: ['panda'],
-        additionalProperties: false,
-      },
-      annotations: { readOnlyHint: false, untrustedContentHint: false },
-      execute(input) {
-        const id = typeof input === 'object' && input !== null ? (input as { panda?: unknown }).panda : undefined;
-        const index = pandas.findIndex((item) => item.id === id);
-        if (index < 0) throw new Error('請選擇有效的熊貓角色。');
-        selectedRef.current = index;
-        setSelected(index);
-        setScore(0); setTime(GAME_SECONDS); setHearts(index === 1 ? 4 : 3);
-        setShield(index === 4); setDrops([]); setPlayerX(50); setPop(null); setPhase('playing');
-        return { status: 'started', panda: pandas[index].name, seconds: GAME_SECONDS };
-      },
-    }, { signal: lifecycle.signal })).catch(() => undefined);
-    return () => lifecycle.abort();
+  const jump = useCallback(() => {
+    if (phaseRef.current !== 'playing' || jumpStart.current !== null) return;
+    jumpStart.current = performance.now();
+    setJumpFrame(1);
   }, []);
 
   useEffect(() => {
@@ -81,100 +65,103 @@ export default function Home() {
       if (value <= 1) { setPhase('over'); return 0 }
       return value - 1;
     }), 1000);
-    const spawner = window.setInterval(() => {
-      const isStorm = Math.random() < 0.19;
-      setDrops((items) => [...items, {
-        id: nextId.current++, x: 7 + Math.random() * 86, y: -8,
-        speed: (isStorm ? 20 : 15 + Math.random() * 5) * (selectedRef.current === 2 ? 0.68 : 1),
-        kind: isStorm ? 'storm' : 'rain',
-      }]);
-    }, 560);
-    const motion = window.setInterval(() => setDrops((items) => {
-      const remaining: Drop[] = [];
-      for (const item of items) {
-        const moved = { ...item, y: item.y + item.speed * 0.055 };
-        const catchWidth = selectedRef.current === 3 ? 17 : 12;
-        const collided = moved.y > 75 && moved.y < 91 && Math.abs(moved.x - playerXRef.current) < catchWidth;
-        if (collided) {
-          if (moved.kind === 'rain') {
-            const gain = selectedRef.current === 0 ? 15 : 10;
-            setScore((value) => value + gain); setPop(`+${gain}`); window.setTimeout(() => setPop(null), 260);
-          } else if (shieldRef.current) {
-            shieldRef.current = false; setShield(false); setPop('擋住了！'); window.setTimeout(() => setPop(null), 500);
-          } else {
-            setHearts((value) => { const next = value - 1; if (next <= 0) setPhase('over'); return Math.max(0, next) });
-            setPop('小心雷電！'); window.setTimeout(() => setPop(null), 500);
-          }
-          continue;
-        }
-        if (moved.y < 105) remaining.push(moved);
+    const spawner = window.setInterval(() => setPuddles((items) => [...items, {
+      id: nextId.current++, x: 112, width: 13 + Math.random() * 8,
+    }]), selectedRef.current === 2 ? 1800 : 1500);
+
+    let raf = 0;
+    const animate = (now: number) => {
+      const delta = Math.min(40, now - lastTime.current); lastTime.current = now;
+      if (jumpStart.current !== null) {
+        const duration = selectedRef.current === 3 ? 1120 : 940;
+        const progress = Math.min(1, (now - jumpStart.current) / duration);
+        const frameIndex = Math.min(jumpFrames.length - 1, Math.floor(progress * jumpFrames.length));
+        setJumpFrame(jumpFrames[frameIndex]);
+        const height = Math.sin(progress * Math.PI) * 162;
+        setJumpY(height); jumpYRef.current = height;
+        if (progress >= 1) { jumpStart.current = null; setJumpY(0); jumpYRef.current = 0; setJumpFrame(0) }
       }
-      return remaining;
-    }), 55);
-    return () => { window.clearInterval(timer); window.clearInterval(spawner); window.clearInterval(motion) };
-  }, [phase]);
+      setPuddles((items) => {
+        const remaining: Puddle[] = [];
+        const speed = (selectedRef.current === 2 ? .022 : .028) + Math.min(0.009, score / 80000);
+        for (const puddle of items) {
+          const moved = { ...puddle, x: puddle.x - speed * delta };
+          const inCollision = moved.x < 35 && moved.x + moved.width > 16;
+          if (inCollision) {
+            if (jumpYRef.current > 56) {
+              setScore((value) => value + 100); setFlash('good'); window.setTimeout(() => setFlash(null), 420);
+            } else if (shieldRef.current) {
+              shieldRef.current = false; setFlash('good'); window.setTimeout(() => setFlash(null), 420);
+            } else {
+              setHearts((value) => { const next = value - 1; if (next <= 0) setPhase('over'); return Math.max(0, next) });
+              setFlash('ouch'); window.setTimeout(() => setFlash(null), 520);
+            }
+            continue;
+          }
+          if (moved.x > -25) remaining.push(moved);
+        }
+        return remaining;
+      });
+      if (phaseRef.current === 'playing') raf = requestAnimationFrame(animate);
+    };
+    raf = requestAnimationFrame(animate);
+    return () => { window.clearInterval(timer); window.clearInterval(spawner); cancelAnimationFrame(raf) };
+  }, [phase, score]);
 
-  const movePlayer = (clientX: number) => {
-    if (phaseRef.current !== 'playing' || !fieldRef.current) return;
-    const bounds = fieldRef.current.getBoundingClientRect();
-    setPlayerX(Math.max(10, Math.min(90, ((clientX - bounds.left) / bounds.width) * 100)));
-  };
+  useEffect(() => {
+    const context = (document as Document & { modelContext?: WebGameContext }).modelContext;
+    if (!context?.registerTool) return;
+    const lifecycle = new AbortController();
+    void Promise.resolve(context.registerTool({
+      name: 'start_puddle_jump_game', title: '開始水窪跳跳',
+      description: '選擇一隻熊貓並開始 45 秒的水窪跳躍遊戲。',
+      inputSchema: { type: 'object', properties: { panda: { type: 'string', enum: pandas.map((item) => item.id) } }, required: ['panda'], additionalProperties: false },
+      annotations: { readOnlyHint: false, untrustedContentHint: false },
+      execute(input) {
+        const id = typeof input === 'object' && input !== null ? (input as { panda?: unknown }).panda : undefined;
+        const index = pandas.findIndex((item) => item.id === id);
+        if (index < 0) throw new Error('請選擇有效的熊貓角色。');
+        startGame(index); return { status: 'started', panda: pandas[index].name, seconds: GAME_SECONDS };
+      },
+    }, { signal: lifecycle.signal })).catch(() => undefined);
+    return () => lifecycle.abort();
+  }, [startGame]);
 
-  const result = useMemo(() => {
-    if (score >= 350) return { title: '彩虹出現了！', note: '今天的雨都被你接住了。', stars: '★★★' };
-    if (score >= 180) return { title: '雨快停了！', note: '再來一次，就能看見彩虹。', stars: '★★☆' };
-    return { title: '還在下雨呢', note: '換一隻熊貓試試牠的能力吧。', stars: '★☆☆' };
-  }, [score]);
+  const rank = score >= 1000 ? ['跳過整場大雨！', '★★★'] : score >= 500 ? ['雨靴高手！', '★★☆'] : ['再試一次！', '★☆☆'];
 
-  return (
-    <main className="page-shell" style={{ '--panda': panda.color, '--panda-pale': panda.pale } as React.CSSProperties}>
-      <section className="phone-stage" aria-label="熊貓雨衣隊遊戲">
-        <div className="sky-glow" aria-hidden="true" /><div className="rain-lines" aria-hidden="true" />
-        <header className="game-header">
-          <div className="brand-mark"><CloudRain size={20} strokeWidth={2.5} /></div>
-          <div><p className="eyebrow">PANDA RAIN CLUB</p><h1>熊貓雨衣隊</h1></div>
-        </header>
+  return <main className="page-shell" style={{ '--panda': panda.color, '--panda-pale': panda.pale } as React.CSSProperties}>
+    <section className="phone-stage" aria-label="熊貓水窪跳跳遊戲">
+      <div className="rain-lines" aria-hidden="true" />
+      <header className="game-header"><div className="brand-mark"><CloudRain size={20} /></div><div><p>PANDA RAIN CLUB</p><h1>水窪跳跳</h1></div></header>
 
-        {phase === 'ready' && <div className="ready-screen">
-          <div className="intro-copy"><p>接住今天的雨</p><span>左右拖曳熊貓，接水滴、閃雷電。</span></div>
-          <div className="hero-panda">
-            <span className="ability-pill"><Sparkles size={14} /> {panda.ability}</span>
-            <div className="panda-sticker"><img src={panda.image} alt={`${panda.name} 穿著雨衣`} draggable={false} /></div>
-            <strong>{panda.name}</strong><small>{panda.detail}</small>
-          </div>
-          <div className="picker" aria-label="選擇熊貓">
-            {pandas.map((item, index) => <button className={index === selected ? 'panda-choice active' : 'panda-choice'} key={item.id}
-              onClick={() => setSelected(index)} aria-label={`選擇 ${item.name}：${item.detail}`} aria-pressed={index === selected}
-              style={{ '--choice': item.color } as React.CSSProperties}><img src={item.image} alt="" draggable={false} /></button>)}
-          </div>
-          <Button className="start-button" onClick={startGame}>開始接雨 <span>→</span></Button>
-        </div>}
+      {phase === 'ready' && <div className="ready-screen">
+        <div className="intro"><span>FRAME-BY-FRAME</span><h2>別踩到水窪！</h2><p>看準距離，輕點畫面讓熊貓跳起來。</p></div>
+        <div className="preview-jump">
+          <div className="preview-shadow" /><Sprite row={selected} frame={3} className="preview-sprite" />
+          <span className="motion motion-one">✦</span><span className="motion motion-two">✦</span>
+        </div>
+        <div className="power-pill"><Sparkles size={14} /> {panda.power}</div>
+        <strong className="panda-name">{panda.name}</strong>
+        <div className="picker" aria-label="選擇熊貓">
+          {pandas.map((item, index) => <button key={item.id} className={selected === index ? 'panda-choice active' : 'panda-choice'} style={{ '--choice': item.color } as React.CSSProperties} onClick={() => setSelected(index)} aria-label={`選擇 ${item.name}：${item.power}`} aria-pressed={selected === index}><Sprite row={index} frame={0} /></button>)}
+        </div>
+        <Button className="start-button" onClick={() => startGame()}>開始跳跳 <Footprints size={19} /></Button>
+      </div>}
 
-        {phase === 'playing' && <div className="play-field" ref={fieldRef}
-          onPointerDown={(event) => { event.currentTarget.setPointerCapture(event.pointerId); movePlayer(event.clientX) }}
-          onPointerMove={(event) => { if (event.currentTarget.hasPointerCapture(event.pointerId)) movePlayer(event.clientX) }}>
-          <div className="hud">
-            <div className="score-box"><span>水滴</span><strong>{score}</strong></div>
-            <div className="timer-box"><Timer size={16} /><strong>{time}</strong><span>秒</span></div>
-            <div className="heart-box" aria-label={`剩下 ${hearts} 顆愛心`}>
-              {Array.from({ length: selected === 1 ? 4 : 3 }).map((_, index) => <Heart key={index} size={17} fill={index < hearts ? 'currentColor' : 'transparent'} />)}
-            </div>
-          </div>
-          <div className="ability-status">{shield ? <><Shield size={14} /> 地瓜護盾準備中</> : panda.ability}</div>
-          {drops.map((drop) => <div key={drop.id} className={`falling-item ${drop.kind}`} style={{ left: `${drop.x}%`, top: `${drop.y}%` }} aria-hidden="true">{drop.kind === 'rain' ? '💧' : '⚡'}</div>)}
-          {pop && <div className="score-pop" style={{ left: `${playerX}%` }}>{pop}</div>}
-          <div className="player" style={{ left: `${playerX}%` }}>{shield && <span className="shield-ring" />}<img src={panda.image} alt={panda.name} draggable={false} /></div>
-          <p className="drag-hint">← 按住並左右拖曳 →</p>
-        </div>}
+      {phase === 'playing' && <div className={`play-field ${flash ?? ''}`} onPointerDown={(event) => { event.preventDefault(); jump() }} role="button" tabIndex={0} onKeyDown={(event) => { if (event.code === 'Space' || event.code === 'Enter') { event.preventDefault(); jump() } }} aria-label="輕點或按空白鍵跳躍">
+        <div className="hud"><div><span>距離</span><strong>{score}m</strong></div><div className="time"><Timer size={15} /><strong>{time}</strong><span>秒</span></div><div className="hearts" aria-label={`剩下 ${hearts} 顆愛心`}>{Array.from({ length: selected === 1 ? 4 : 3 }).map((_, i) => <Heart key={i} size={16} fill={i < hearts ? 'currentColor' : 'transparent'} />)}</div></div>
+        <div className="frame-badge">FRAME {jumpFrame + 1}/6</div>
+        {flash === 'good' && <div className="game-pop">跳過！ +100</div>}{flash === 'ouch' && <div className="game-pop ouch-text">噗通！</div>}
+        <div className="horizon" /><div className="ground-track" />
+        {puddles.map((puddle) => <div key={puddle.id} className="puddle" style={{ left: `${puddle.x}%`, width: `${puddle.width}%` }}><i /><i /></div>)}
+        <div className="runner" style={{ transform: `translateY(${-jumpY}px)` }}><Sprite row={selected} frame={jumpFrame} /></div>
+        <div className="tap-callout"><span>↑</span> 輕點任意處跳躍</div>
+      </div>}
 
-        {phase === 'over' && <div className="result-screen">
-          <div className="result-halo" /><div className="result-panda"><img src={panda.image} alt={panda.name} /></div>
-          <p className="stars">{result.stars}</p><h2>{result.title}</h2><p>{result.note}</p>
-          <div className="final-score"><span>收集水滴</span><strong>{score}</strong></div>
-          <Button className="start-button" onClick={startGame}><RotateCcw size={17} /> 再玩一次</Button>
-          <button className="change-panda" onClick={() => setPhase('ready')}>換一隻熊貓</button>
-        </div>}
-      </section>
-    </main>
-  );
+      {phase === 'over' && <div className="result-screen">
+        <div className="result-art"><Sprite row={selected} frame={3} /></div><p className="stars">{rank[1]}</p><h2>{rank[0]}</h2><p>{panda.name} 一共跑了</p><strong className="result-score">{score}m</strong>
+        <Button className="start-button" onClick={() => startGame()}><RotateCcw size={18} /> 再跳一次</Button><button className="change-panda" onClick={() => setPhase('ready')}>換一隻熊貓</button>
+      </div>}
+    </section>
+  </main>;
 }
