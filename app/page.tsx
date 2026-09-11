@@ -10,7 +10,7 @@ type WebGameContext = { registerTool: (tool: { name: string; title: string; desc
 
 const pandas: Panda[] = [
   { id: 'enji', name: 'Enji', color: '#58bff5', pale: '#dff4ff', power: '起跑加分', sheet: '/enji-run-jump-v1.png' },
-  { id: 'chorong', name: 'Chorong', color: '#f39ab5', pale: '#ffe5ed', power: '多一顆愛心', sheet: '/chorong-run-jump-final.png' },
+  { id: 'chorong', name: 'Chorong', color: '#f39ab5', pale: '#ffe5ed', power: '多一顆愛心', sheet: '/chorong-run-jump-v3.png' },
   { id: 'najoo', name: 'Najoo', color: '#ae85d5', pale: '#f1e7fb', power: '水窪速度較慢', sheet: '/najoo-run-jump-v1.png' },
   { id: 'bomi', name: 'Bomi', color: '#f4aa38', pale: '#fff0d3', power: '跳躍時間更長', sheet: '/bomi-run-jump-v1.png' },
   { id: 'hayoung', name: 'Hayoung', color: '#f3ce42', pale: '#fff7cf', power: '擋住一次失誤', sheet: '/hayoung-run-jump-final.png' },
