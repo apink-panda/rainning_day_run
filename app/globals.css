@@ -422,7 +422,12 @@ button {
   bottom: 95px;
   width: 148px;
   height: 148px;
+  transform-origin: 50% 55%;
+  will-change: transform;
   transition: transform 35ms linear;
+}
+.runner.flipping .panda-sprite {
+  filter: drop-shadow(0 8px 8px rgb(5 22 48 / 28%));
 }
 .puddle {
   position: absolute;
@@ -466,7 +471,7 @@ button {
 .tap-callout span {
   display: inline-grid;
   place-items: center;
-  width: 25px;
+  width: 29px;
   height: 25px;
   margin-right: 5px;
   border-radius: 50%;
@@ -487,6 +492,11 @@ button {
 }
 .ouch-text {
   color: #ffacc0;
+}
+.flip-text {
+  color: var(--panda-pale);
+  font-size: 18px;
+  white-space: nowrap;
 }
 @keyframes pop {
   from {

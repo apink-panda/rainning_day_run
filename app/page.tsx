@@ -19,6 +19,11 @@ const pandas: Panda[] = [
 
 const GAME_SECONDS = 45;
 const jumpFrames = [5, 5, 6, 6, 7, 7, 7, 8, 8, 9];
+const flipFrames = [5, 6, 7, 8, 9, 8, 7, 6];
+const flipAngles = [0, 48, 98, 154, 210, 266, 316, 360];
+const DOUBLE_TAP_WINDOW = 360;
+const FLIP_ANIMATION_MS = 620;
+const FLIP_AIRTIME_BONUS = 360;
 const FOOT_LEFT = 23.5;
 const FOOT_RIGHT = 31.5;
 const MIN_VISIBLE_FOOT_CLEARANCE = 36;
@@ -36,9 +41,14 @@ export default function Home() {
   const [puddles, setPuddles] = useState<Puddle[]>([]);
   const [jumpY, setJumpY] = useState(0);
   const [jumpFrame, setJumpFrame] = useState(0);
+  const [flipAngle, setFlipAngle] = useState(0);
+  const [isFlipping, setIsFlipping] = useState(false);
+  const [flipPop, setFlipPop] = useState(false);
   const [flash, setFlash] = useState<'good' | 'ouch' | 'shield' | null>(null);
   const nextId = useRef(1);
   const jumpStart = useRef<number | null>(null);
+  const flipStart = useRef<number | null>(null);
+  const flipActiveRef = useRef(false);
   const selectedRef = useRef(selected);
   const phaseRef = useRef(phase);
   const jumpYRef = useRef(0);
@@ -56,16 +66,30 @@ export default function Home() {
     selectedRef.current = index;
     const firstScore = index === 0 ? 50 : 0;
     setSelected(index); setScore(firstScore); setTime(GAME_SECONDS);
-    setHearts(index === 1 ? 4 : 3); setPuddles([]); setJumpY(0); setJumpFrame(0); setFlash(null);
-    jumpStart.current = null; jumpFrameRef.current = 0; clearedScoreRef.current = 0;
+    setHearts(index === 1 ? 4 : 3); setPuddles([]); setJumpY(0); setJumpFrame(0); setFlipAngle(0);
+    setIsFlipping(false); setFlipPop(false); setFlash(null);
+    jumpStart.current = null; flipStart.current = null; flipActiveRef.current = false;
+    jumpFrameRef.current = 0; clearedScoreRef.current = 0;
     shieldRef.current = index === 4; lastTime.current = performance.now(); setPhase('playing');
   }, []);
 
   const jump = useCallback(() => {
-    if (phaseRef.current !== 'playing' || jumpStart.current !== null) return;
-    jumpStart.current = performance.now();
-    jumpFrameRef.current = 5;
-    setJumpFrame(5);
+    if (phaseRef.current !== 'playing') return;
+    const now = performance.now();
+    if (jumpStart.current === null) {
+      jumpStart.current = now;
+      jumpFrameRef.current = 5;
+      setJumpFrame(5);
+      return;
+    }
+    const baseDuration = selectedRef.current === 3 ? 1120 : 940;
+    const elapsed = now - jumpStart.current;
+    if (flipActiveRef.current || elapsed > DOUBLE_TAP_WINDOW) return;
+    const currentProgress = Math.min(1, elapsed / baseDuration);
+    jumpStart.current = now - currentProgress * (baseDuration + FLIP_AIRTIME_BONUS);
+    flipStart.current = now; flipActiveRef.current = true;
+    setIsFlipping(true); setFlipPop(true);
+    window.setTimeout(() => setFlipPop(false), 520);
   }, []);
 
   useEffect(() => {
@@ -84,16 +108,30 @@ export default function Home() {
     const animate = (now: number) => {
       const delta = Math.min(40, now - lastTime.current); lastTime.current = now;
       if (jumpStart.current !== null) {
-        const duration = selectedRef.current === 3 ? 1120 : 940;
+        const baseDuration = selectedRef.current === 3 ? 1120 : 940;
+        const duration = baseDuration + (flipActiveRef.current ? FLIP_AIRTIME_BONUS : 0);
         const progress = Math.min(1, (now - jumpStart.current) / duration);
-        const frameIndex = Math.min(jumpFrames.length - 1, Math.floor(progress * jumpFrames.length));
-        const nextJumpFrame = jumpFrames[frameIndex];
+        let nextJumpFrame: number;
+        if (flipStart.current !== null) {
+          const flipProgress = Math.min(1, (now - flipStart.current) / FLIP_ANIMATION_MS);
+          const flipIndex = Math.min(flipFrames.length - 1, Math.floor(flipProgress * flipFrames.length));
+          nextJumpFrame = flipFrames[flipIndex];
+          setFlipAngle(flipAngles[flipIndex]);
+          if (flipProgress >= 1) {
+            flipStart.current = null; setFlipAngle(0); setIsFlipping(false);
+          }
+        } else {
+          const frameIndex = Math.min(jumpFrames.length - 1, Math.floor(progress * jumpFrames.length));
+          nextJumpFrame = jumpFrames[frameIndex];
+        }
         jumpFrameRef.current = nextJumpFrame; setJumpFrame(nextJumpFrame);
-        const height = Math.sin(progress * Math.PI) * 162;
+        const height = Math.sin(progress * Math.PI) * (flipActiveRef.current ? 178 : 162);
         setJumpY(height); jumpYRef.current = height;
         if (progress >= 1) {
           const nextRunFrame = Math.floor(now / 105) % 5;
           jumpStart.current = null; setJumpY(0); jumpYRef.current = 0;
+          flipStart.current = null; flipActiveRef.current = false;
+          setFlipAngle(0); setIsFlipping(false);
           jumpFrameRef.current = nextRunFrame; setJumpFrame(nextRunFrame);
         }
       } else {
@@ -169,7 +207,7 @@ export default function Home() {
       <header className="game-header"><div className="brand-mark"><CloudRain size={20} /></div><div><p>PANDA RAIN CLUB</p><h1>水窪跳跳</h1></div></header>
 
       {phase === 'ready' && <div className="ready-screen">
-        <div className="intro"><span>FRAME-BY-FRAME</span><h2>別踩到水窪！</h2><p>看準距離，輕點畫面讓熊貓跳起來。</p></div>
+        <div className="intro"><span>FRAME-BY-FRAME</span><h2>別踩到水窪！</h2><p>輕點跳躍，連點兩下可在空中翻轉得更遠。</p></div>
         <div className="preview-jump">
           <div className="preview-shadow" /><Sprite panda={panda} frame={7} className="preview-sprite" />
           <span className="motion motion-one">✦</span><span className="motion motion-two">✦</span>
@@ -182,14 +220,15 @@ export default function Home() {
         <Button className="start-button" onClick={() => startGame()}>開始跳跳 <Footprints size={19} /></Button>
       </div>}
 
-      {phase === 'playing' && <div className={`play-field ${flash === 'shield' ? 'good' : (flash ?? '')}`} onPointerDown={(event) => { event.preventDefault(); jump() }} role="button" tabIndex={0} onKeyDown={(event) => { if (event.code === 'Space' || event.code === 'Enter') { event.preventDefault(); jump() } }} aria-label="輕點或按空白鍵跳躍">
+      {phase === 'playing' && <div className={`play-field ${flash === 'shield' ? 'good' : (flash ?? '')}`} onPointerDown={(event) => { event.preventDefault(); jump() }} role="button" tabIndex={0} onKeyDown={(event) => { if (!event.repeat && (event.code === 'Space' || event.code === 'Enter')) { event.preventDefault(); jump() } }} aria-label="輕點跳躍，連點兩下空中翻轉">
         <div className="hud"><div><span>距離</span><strong>{score}m</strong></div><div className="time"><Timer size={15} /><strong>{time}</strong><span>秒</span></div><div className="hearts" aria-label={`剩下 ${hearts} 顆愛心`}>{Array.from({ length: selected === 1 ? 4 : 3 }).map((_, i) => <Heart key={i} size={16} fill={i < hearts ? 'currentColor' : 'transparent'} />)}</div></div>
-        <div className="frame-badge">{panda.name} · {jumpFrame >= 5 ? `JUMP ${jumpFrame - 4}/5` : `RUN ${jumpFrame + 1}/5`}</div>
+        <div className="frame-badge">{panda.name} · {isFlipping ? `FLIP ${Math.min(8, Math.floor(flipAngle / 45) + 1)}/8` : (jumpFrame >= 5 ? `JUMP ${jumpFrame - 4}/5` : `RUN ${jumpFrame + 1}/5`)}</div>
+        {flipPop && <div className="game-pop flip-text">空中翻轉！ 跳更遠</div>}
         {flash === 'good' && <div className="game-pop">跳過！ +100</div>}{flash === 'shield' && <div className="game-pop">護盾擋住了！</div>}{flash === 'ouch' && <div className="game-pop ouch-text">噗通！</div>}
         <div className="horizon" /><div className="ground-track" />
         {puddles.map((puddle) => <div key={puddle.id} className="puddle" style={{ left: `${puddle.x}%`, width: `${puddle.width}%` }}><i /><i /></div>)}
-        <div className="runner" style={{ transform: `translateY(${-jumpY}px)` }}><Sprite panda={panda} frame={jumpFrame} /></div>
-        <div className="tap-callout"><span>↑</span> 輕點任意處跳躍</div>
+        <div className={isFlipping ? 'runner flipping' : 'runner'} style={{ transform: `translateY(${-jumpY}px) rotate(${flipAngle}deg)` }}><Sprite panda={panda} frame={jumpFrame} /></div>
+        <div className="tap-callout"><span>×2</span> 連點翻轉 · 跳得更遠</div>
       </div>}
 
       {phase === 'over' && <div className="result-screen">
