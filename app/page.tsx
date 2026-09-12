@@ -1,20 +1,20 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { CloudRain, Footprints, Heart, RotateCcw, Sparkles, Timer } from 'lucide-react';
+import { CloudRain, Footprints, Heart, RotateCcw, Timer } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
-type Panda = { id: string; name: string; color: string; pale: string; power: string; sheet: string; footInsets: readonly number[] };
+type Panda = { id: string; name: string; color: string; pale: string; sheet: string; footInsets: readonly number[] };
 type Puddle = { id: number; x: number; width: number; settled: boolean; engaged: boolean };
 type WebGameContext = { registerTool: (tool: { name: string; title: string; description: string; inputSchema: object; annotations: { readOnlyHint: boolean; untrustedContentHint: boolean }; execute: (input: unknown) => unknown }, options?: { signal?: AbortSignal }) => void | Promise<void> };
 
 const pandas: Panda[] = [
   // Per-frame footInsets match each sheet's transparent space below the visible feet at the 148px game size.
-  { id: 'enji', name: 'Enji', color: '#58bff5', pale: '#dff4ff', power: '起跑加分', sheet: '/enji-run-jump-v9.png', footInsets: [0, 0, 0, 0, 0, 7, 6, 8, 7, 7] },
-  { id: 'chorong', name: 'Chorong', color: '#f39ab5', pale: '#ffe5ed', power: '多一顆愛心', sheet: '/chorong-run-jump-v3.png', footInsets: [2, 3, 0, 6, 0, 10, 11, 15, 9, 10] },
-  { id: 'najoo', name: 'Najoo', color: '#ae85d5', pale: '#f1e7fb', power: '水窪速度較慢', sheet: '/najoo-run-jump-v1.png', footInsets: [3, 2, 0, 0, 2, 7, 7, 14, 9, 8] },
-  { id: 'bomi', name: 'Bomi', color: '#f4aa38', pale: '#fff0d3', power: '跳躍時間更長', sheet: '/bomi-run-jump-v1.png', footInsets: [3, 2, 0, 11, 3, 7, 7, 14, 12, 5] },
-  { id: 'hayoung', name: 'Hayoung', color: '#f3ce42', pale: '#fff7cf', power: '擋住一次失誤', sheet: '/hayoung-run-jump-final.png', footInsets: [9, 8, 0, 15, 8, 11, 7, 28, 17, 11] },
+  { id: 'enji', name: 'Enji', color: '#58bff5', pale: '#dff4ff', sheet: '/enji-run-jump-v9.png', footInsets: [0, 0, 0, 0, 0, 7, 6, 8, 7, 7] },
+  { id: 'chorong', name: 'Chorong', color: '#f39ab5', pale: '#ffe5ed', sheet: '/chorong-run-jump-v3.png', footInsets: [2, 3, 0, 6, 0, 10, 11, 15, 9, 10] },
+  { id: 'najoo', name: 'Najoo', color: '#ae85d5', pale: '#f1e7fb', sheet: '/najoo-run-jump-v1.png', footInsets: [3, 2, 0, 0, 2, 7, 7, 14, 9, 8] },
+  { id: 'bomi', name: 'Bomi', color: '#f4aa38', pale: '#fff0d3', sheet: '/bomi-run-jump-v1.png', footInsets: [3, 2, 0, 11, 3, 7, 7, 14, 12, 5] },
+  { id: 'hayoung', name: 'Hayoung', color: '#f3ce42', pale: '#fff7cf', sheet: '/hayoung-run-jump-final.png', footInsets: [9, 8, 0, 15, 8, 11, 7, 28, 17, 11] },
 ];
 
 const GAME_SECONDS = 45;
@@ -59,7 +59,7 @@ export default function Home() {
   const [hasFlipped, setHasFlipped] = useState(false);
   const [flipPop, setFlipPop] = useState(false);
   const [showcaseFrame, setShowcaseFrame] = useState(0);
-  const [flash, setFlash] = useState<'good' | 'ouch' | 'shield' | null>(null);
+  const [flash, setFlash] = useState<'good' | 'ouch' | null>(null);
   const nextId = useRef(1);
   const jumpStart = useRef<number | null>(null);
   const flipStart = useRef<number | null>(null);
@@ -69,7 +69,6 @@ export default function Home() {
   const jumpYRef = useRef(0);
   const jumpFrameRef = useRef(0);
   const clearedScoreRef = useRef(0);
-  const shieldRef = useRef(false);
   const lastTime = useRef(0);
   const panda = pandas[selected];
 
@@ -89,13 +88,12 @@ export default function Home() {
 
   const startGame = useCallback((index = selectedRef.current) => {
     selectedRef.current = index;
-    const firstScore = index === 0 ? 50 : 0;
-    setSelected(index); setScore(firstScore); setTime(GAME_SECONDS);
-    setHearts(index === 1 ? 4 : 3); setPuddles([]); setJumpY(0); setJumpFrame(0); setFlipAngle(0);
+    setSelected(index); setScore(0); setTime(GAME_SECONDS);
+    setHearts(3); setPuddles([]); setJumpY(0); setJumpFrame(0); setFlipAngle(0);
     setIsFlipping(false); setHasFlipped(false); setFlipPop(false); setFlash(null);
     jumpStart.current = null; flipStart.current = null; flipActiveRef.current = false;
     jumpFrameRef.current = 0; clearedScoreRef.current = 0;
-    shieldRef.current = index === 4; lastTime.current = performance.now(); setPhase('playing');
+    lastTime.current = performance.now(); setPhase('playing');
   }, []);
 
   const jump = useCallback(() => {
@@ -107,7 +105,7 @@ export default function Home() {
       setJumpFrame(5);
       return;
     }
-    const baseDuration = selectedRef.current === 3 ? 1120 : 940;
+    const baseDuration = 940;
     const elapsed = now - jumpStart.current;
     if (flipActiveRef.current || elapsed > DOUBLE_TAP_WINDOW) return;
     const currentProgress = Math.min(1, elapsed / baseDuration);
@@ -125,15 +123,15 @@ export default function Home() {
     }), 1000);
     const spawner = window.setInterval(() => setPuddles((items) => [...items, {
       id: nextId.current++, x: 112,
-      width: selectedRef.current === 2 ? 12 + Math.random() * 5 : 13 + Math.random() * 8,
+      width: 13 + Math.random() * 8,
       settled: false, engaged: false,
-    }]), selectedRef.current === 2 ? 1800 : 1500);
+    }]), 1500);
 
     let raf = 0;
     const animate = (now: number) => {
       const delta = Math.min(40, now - lastTime.current); lastTime.current = now;
       if (jumpStart.current !== null) {
-        const baseDuration = selectedRef.current === 3 ? 1120 : 940;
+        const baseDuration = 940;
         const duration = baseDuration + (flipActiveRef.current ? FLIP_AIRTIME_BONUS : 0);
         const progress = Math.min(1, (now - jumpStart.current) / duration);
         let nextJumpFrame: number;
@@ -169,9 +167,7 @@ export default function Home() {
         const activePanda = pandas[selectedRef.current];
         const visibleFootClearance = jumpYRef.current + (activePanda.footInsets[jumpFrameRef.current] ?? 0);
         for (const puddle of items) {
-          const baseSpeed = selectedRef.current === 2
-            ? (puddle.engaged ? .032 : .022)
-            : .028;
+          const baseSpeed = .028;
           const speed = baseSpeed + Math.min(0.009, clearedScoreRef.current / 80000);
           const moved = { ...puddle, x: puddle.x - speed * delta };
           const wetLeft = moved.x + moved.width * 0.12;
@@ -180,10 +176,7 @@ export default function Home() {
 
           if (!moved.settled && feetOverWater) {
             moved.engaged = true;
-            if (visibleFootClearance < MIN_VISIBLE_FOOT_CLEARANCE && shieldRef.current) {
-              moved.settled = true;
-              shieldRef.current = false; setFlash('shield'); window.setTimeout(() => setFlash(null), 420);
-            } else if (visibleFootClearance < MIN_VISIBLE_FOOT_CLEARANCE) {
+            if (visibleFootClearance < MIN_VISIBLE_FOOT_CLEARANCE) {
               moved.settled = true;
               setHearts((value) => { const next = value - 1; if (next <= 0) setPhase('over'); return Math.max(0, next) });
               setFlash('ouch'); window.setTimeout(() => setFlash(null), 520);
@@ -239,19 +232,18 @@ export default function Home() {
           <div className="preview-shadow" /><ShowcaseSprite panda={panda} frame={showcaseFrame} className="preview-showcase" />
           <span className="motion motion-one">✦</span><span className="motion motion-two">✦</span>
         </div>
-        <div className="power-pill"><Sparkles size={14} /> {panda.power}</div>
         <strong className="panda-name">{panda.name}</strong>
         <div className="picker" aria-label="選擇熊貓">
-          {pandas.map((item, index) => <button key={item.id} className={selected === index ? 'panda-choice active' : 'panda-choice'} style={{ '--choice': item.color } as React.CSSProperties} onClick={() => setSelected(index)} aria-label={`選擇 ${item.name}：${item.power}`} aria-pressed={selected === index}><ShowcaseSprite panda={item} frame={selected === index ? showcaseFrame : 0} className="choice-showcase" /></button>)}
+          {pandas.map((item, index) => <button key={item.id} className={selected === index ? 'panda-choice active' : 'panda-choice'} style={{ '--choice': item.color } as React.CSSProperties} onClick={() => setSelected(index)} aria-label={`選擇 ${item.name}`} aria-pressed={selected === index}><ShowcaseSprite panda={item} frame={selected === index ? showcaseFrame : 0} className="choice-showcase" /></button>)}
         </div>
         <Button className="start-button" onClick={() => startGame()}>開始跳跳 <Footprints size={19} /></Button>
       </div>}
 
-      {phase === 'playing' && <div className={`play-field ${flash === 'shield' ? 'good' : (flash ?? '')}`} onPointerDown={(event) => { event.preventDefault(); jump() }} role="button" tabIndex={0} onKeyDown={(event) => { if (!event.repeat && (event.code === 'Space' || event.code === 'Enter')) { event.preventDefault(); jump() } }} aria-label="輕點跳躍，連點兩下空中翻轉">
-        <div className="hud"><div><span>距離</span><strong>{score}m</strong></div><div className="time"><Timer size={15} /><strong>{time}</strong><span>秒</span></div><div className="hearts" aria-label={`剩下 ${hearts} 顆愛心`}>{Array.from({ length: selected === 1 ? 4 : 3 }).map((_, i) => <Heart key={i} size={16} fill={i < hearts ? 'currentColor' : 'transparent'} />)}</div></div>
+      {phase === 'playing' && <div className={`play-field ${flash ?? ''}`} onPointerDown={(event) => { event.preventDefault(); jump() }} role="button" tabIndex={0} onKeyDown={(event) => { if (!event.repeat && (event.code === 'Space' || event.code === 'Enter')) { event.preventDefault(); jump() } }} aria-label="輕點跳躍，連點兩下空中翻轉">
+        <div className="hud"><div><span>距離</span><strong>{score}m</strong></div><div className="time"><Timer size={15} /><strong>{time}</strong><span>秒</span></div><div className="hearts" aria-label={`剩下 ${hearts} 顆愛心`}>{Array.from({ length: 3 }).map((_, i) => <Heart key={i} size={16} fill={i < hearts ? 'currentColor' : 'transparent'} />)}</div></div>
         <div className="frame-badge">{panda.name} · {isFlipping ? `FLIP ${Math.min(8, Math.floor(flipAngle / 45) + 1)}/8` : (jumpFrame >= 5 ? `JUMP ${jumpFrame - 4}/5` : `RUN ${jumpFrame + 1}/5`)}</div>
         {flipPop && <div className="game-pop flip-text">空中翻轉！ 跳更遠</div>}
-        {flash === 'good' && <div className="game-pop">跳過！ +100</div>}{flash === 'shield' && <div className="game-pop">護盾擋住了！</div>}{flash === 'ouch' && <div className="game-pop ouch-text">噗通！</div>}
+        {flash === 'good' && <div className="game-pop">跳過！ +100</div>}{flash === 'ouch' && <div className="game-pop ouch-text">噗通！</div>}
         <div className="horizon" /><div className="ground-track" />
         {puddles.map((puddle) => <div key={puddle.id} className="puddle" style={{ left: `${puddle.x}%`, width: `${puddle.width}%` }}><i /><i /></div>)}
         <div className={`runner${isFlipping ? ' flipping' : ''}${selected === 3 && hasFlipped ? ' stabilized' : ''}`} style={{ transform: `translateY(${-jumpY}px) rotate(${flipAngle}deg)` }}><Sprite panda={panda} frame={jumpFrame} offset={flipOffset} /></div>
