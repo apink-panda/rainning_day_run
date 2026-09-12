@@ -158,12 +158,16 @@ button {
   display: grid;
   place-items: center;
 }
-.preview-sprite {
-  width: 168px !important;
-  height: 168px !important;
-  animation:
-    previewJump 2s steps(1, end) infinite,
-    previewFrames 2s steps(1, end) infinite;
+.showcase-sprite {
+  display: block;
+  object-fit: contain;
+  user-select: none;
+  pointer-events: none;
+}
+.preview-showcase {
+  width: 190px;
+  height: 242px;
+  filter: drop-shadow(0 11px 12px rgb(0 9 27 / 30%));
 }
 .preview-shadow {
   position: absolute;
@@ -174,27 +178,6 @@ button {
   background: rgb(1 13 31 / 50%);
   filter: blur(3px);
   animation: shadowJump 2s steps(1, end) infinite;
-}
-@keyframes previewJump {
-  0%,
-  100% {
-    transform: translateY(34px);
-  }
-  20%,
-  80% {
-    transform: translateY(-5px);
-  }
-  40%,
-  60% {
-    transform: translateY(-35px);
-  }
-}
-@keyframes previewFrames {
-  0%, 100% { background-position: 0% 100%; }
-  20% { background-position: 25% 100%; }
-  40%, 60% { background-position: 50% 100%; }
-  80% { background-position: 75% 100%; }
-  95% { background-position: 100% 100%; }
 }
 @keyframes shadowJump {
   40%,
@@ -256,12 +239,12 @@ button {
   opacity: 0.57;
   transition: 0.18s;
 }
-.panda-choice .panda-sprite {
+.panda-choice .choice-showcase {
   position: absolute;
-  left: 3px;
-  top: 4px;
+  left: 4px;
+  top: 1px;
   width: 44px;
-  height: 44px;
+  height: 56px;
 }
 .panda-choice.active {
   opacity: 1;
@@ -573,9 +556,9 @@ button {
   .preview-jump {
     min-height: 235px;
   }
-  .preview-sprite {
-    width: 144px !important;
-    height: 144px !important;
+  .preview-showcase {
+    width: 166px;
+    height: 211px;
   }
   .intro h2 {
     font-size: 27px;

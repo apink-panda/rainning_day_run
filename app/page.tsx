@@ -41,6 +41,10 @@ function Sprite({ panda, frame, className = '', offset = [0, 0] }: { panda: Pand
   return <span className={`panda-sprite ${className}`} style={{ backgroundImage: `url('${panda.sheet}')`, '--frame-x': `${(frame % 5) * 25}%`, '--row-y': frame >= 5 ? '100%' : '0%', transform: `translate(${offset[0]}px, ${offset[1]}px)` } as React.CSSProperties} aria-hidden="true" />;
 }
 
+function ShowcaseSprite({ panda, frame, className = '' }: { panda: Panda; frame: number; className?: string }) {
+  return <img className={`showcase-sprite ${className}`} src={`/selection-frames/${panda.id}/frame-${frame + 1}.png`} alt="" aria-hidden="true" draggable={false} />;
+}
+
 export default function Home() {
   const [selected, setSelected] = useState(0);
   const [phase, setPhase] = useState<'ready' | 'playing' | 'over'>('ready');
@@ -54,6 +58,7 @@ export default function Home() {
   const [isFlipping, setIsFlipping] = useState(false);
   const [hasFlipped, setHasFlipped] = useState(false);
   const [flipPop, setFlipPop] = useState(false);
+  const [showcaseFrame, setShowcaseFrame] = useState(0);
   const [flash, setFlash] = useState<'good' | 'ouch' | 'shield' | null>(null);
   const nextId = useRef(1);
   const jumpStart = useRef<number | null>(null);
@@ -71,6 +76,16 @@ export default function Home() {
   useEffect(() => { selectedRef.current = selected }, [selected]);
   useEffect(() => { phaseRef.current = phase }, [phase]);
   useEffect(() => { jumpYRef.current = jumpY }, [jumpY]);
+  useEffect(() => {
+    if (phase !== 'ready') return;
+    setShowcaseFrame(0);
+    for (let frame = 1; frame <= 6; frame += 1) {
+      const image = new window.Image();
+      image.src = `/selection-frames/${pandas[selected].id}/frame-${frame}.png`;
+    }
+    const timer = window.setInterval(() => setShowcaseFrame((frame) => (frame + 1) % 6), 260);
+    return () => window.clearInterval(timer);
+  }, [phase, selected]);
 
   const startGame = useCallback((index = selectedRef.current) => {
     selectedRef.current = index;
@@ -221,13 +236,13 @@ export default function Home() {
       {phase === 'ready' && <div className="ready-screen">
         <div className="intro"><span>FRAME-BY-FRAME</span><h2>別踩到水窪！</h2><p>輕點跳躍，連點兩下可在空中翻轉得更遠。</p></div>
         <div className="preview-jump">
-          <div className="preview-shadow" /><Sprite panda={panda} frame={7} className="preview-sprite" />
+          <div className="preview-shadow" /><ShowcaseSprite panda={panda} frame={showcaseFrame} className="preview-showcase" />
           <span className="motion motion-one">✦</span><span className="motion motion-two">✦</span>
         </div>
         <div className="power-pill"><Sparkles size={14} /> {panda.power}</div>
         <strong className="panda-name">{panda.name}</strong>
         <div className="picker" aria-label="選擇熊貓">
-          {pandas.map((item, index) => <button key={item.id} className={selected === index ? 'panda-choice active' : 'panda-choice'} style={{ '--choice': item.color } as React.CSSProperties} onClick={() => setSelected(index)} aria-label={`選擇 ${item.name}：${item.power}`} aria-pressed={selected === index}><Sprite panda={item} frame={0} /></button>)}
+          {pandas.map((item, index) => <button key={item.id} className={selected === index ? 'panda-choice active' : 'panda-choice'} style={{ '--choice': item.color } as React.CSSProperties} onClick={() => setSelected(index)} aria-label={`選擇 ${item.name}：${item.power}`} aria-pressed={selected === index}><ShowcaseSprite panda={item} frame={selected === index ? showcaseFrame : 0} className="choice-showcase" /></button>)}
         </div>
         <Button className="start-button" onClick={() => startGame()}>開始跳跳 <Footprints size={19} /></Button>
       </div>}
