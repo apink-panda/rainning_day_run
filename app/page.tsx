@@ -5,7 +5,7 @@ import { CloudRain, Footprints, Heart, RotateCcw, Sparkles, Timer } from 'lucide
 import { Button } from '@/components/ui/button';
 
 type Panda = { id: string; name: string; color: string; pale: string; power: string; sheet: string };
-type Puddle = { id: number; x: number; width: number };
+type Puddle = { id: number; x: number; width: number; settled: boolean };
 type WebGameContext = { registerTool: (tool: { name: string; title: string; description: string; inputSchema: object; annotations: { readOnlyHint: boolean; untrustedContentHint: boolean }; execute: (input: unknown) => unknown }, options?: { signal?: AbortSignal }) => void | Promise<void> };
 
 const pandas: Panda[] = [
@@ -68,7 +68,7 @@ export default function Home() {
       return value - 1;
     }), 1000);
     const spawner = window.setInterval(() => setPuddles((items) => [...items, {
-      id: nextId.current++, x: 112, width: 13 + Math.random() * 8,
+      id: nextId.current++, x: 112, width: 13 + Math.random() * 8, settled: false,
     }]), selectedRef.current === 2 ? 1800 : 1500);
 
     let raf = 0;
@@ -90,8 +90,9 @@ export default function Home() {
         const speed = (selectedRef.current === 2 ? .022 : .028) + Math.min(0.009, scoreRef.current / 80000);
         for (const puddle of items) {
           const moved = { ...puddle, x: puddle.x - speed * delta };
-          const inCollision = moved.x < 35 && moved.x + moved.width > 16;
+          const inCollision = !moved.settled && moved.x < 35 && moved.x + moved.width > 16;
           if (inCollision) {
+            moved.settled = true;
             if (jumpYRef.current > 56) {
               setScore((value) => { const next = value + 100; scoreRef.current = next; return next }); setFlash('good'); window.setTimeout(() => setFlash(null), 420);
             } else if (shieldRef.current) {
@@ -100,7 +101,6 @@ export default function Home() {
               setHearts((value) => { const next = value - 1; if (next <= 0) setPhase('over'); return Math.max(0, next) });
               setFlash('ouch'); window.setTimeout(() => setFlash(null), 520);
             }
-            continue;
           }
           if (moved.x > -25) remaining.push(moved);
         }
