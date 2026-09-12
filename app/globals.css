@@ -426,7 +426,8 @@ button {
   will-change: transform;
   transition: transform 35ms linear;
 }
-.runner.flipping .panda-sprite {
+.runner.flipping .panda-sprite,
+.runner.stabilized .panda-sprite {
   filter: drop-shadow(0 8px 8px rgb(5 22 48 / 28%));
   transition: transform 55ms linear;
 }

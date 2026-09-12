@@ -23,9 +23,12 @@ const flipFrames = [5, 6, 7, 8, 9, 8, 7, 6];
 const bomiFlipFrames = [6, 6, 7, 7, 7, 7, 7, 8];
 const flipAngles = [0, 48, 98, 154, 210, 266, 316, 360];
 const bomiFlipOffsets: Record<number, readonly [number, number]> = {
-  6: [-9, -3],
-  7: [9, 16],
-  8: [2, 5],
+  // Align Bomi's visible body center to the runner's 50%/55% rotation axis.
+  5: [-5, -2],
+  6: [-14, 0],
+  7: [3, 19],
+  8: [-4, 8],
+  9: [-9, 2],
 };
 const DOUBLE_TAP_WINDOW = 360;
 const FLIP_ANIMATION_MS = 620;
@@ -49,6 +52,7 @@ export default function Home() {
   const [jumpFrame, setJumpFrame] = useState(0);
   const [flipAngle, setFlipAngle] = useState(0);
   const [isFlipping, setIsFlipping] = useState(false);
+  const [hasFlipped, setHasFlipped] = useState(false);
   const [flipPop, setFlipPop] = useState(false);
   const [flash, setFlash] = useState<'good' | 'ouch' | 'shield' | null>(null);
   const nextId = useRef(1);
@@ -73,7 +77,7 @@ export default function Home() {
     const firstScore = index === 0 ? 50 : 0;
     setSelected(index); setScore(firstScore); setTime(GAME_SECONDS);
     setHearts(index === 1 ? 4 : 3); setPuddles([]); setJumpY(0); setJumpFrame(0); setFlipAngle(0);
-    setIsFlipping(false); setFlipPop(false); setFlash(null);
+    setIsFlipping(false); setHasFlipped(false); setFlipPop(false); setFlash(null);
     jumpStart.current = null; flipStart.current = null; flipActiveRef.current = false;
     jumpFrameRef.current = 0; clearedScoreRef.current = 0;
     shieldRef.current = index === 4; lastTime.current = performance.now(); setPhase('playing');
@@ -94,7 +98,7 @@ export default function Home() {
     const currentProgress = Math.min(1, elapsed / baseDuration);
     jumpStart.current = now - currentProgress * (baseDuration + FLIP_AIRTIME_BONUS);
     flipStart.current = now; flipActiveRef.current = true;
-    setIsFlipping(true); setFlipPop(true);
+    setIsFlipping(true); setHasFlipped(true); setFlipPop(true);
     window.setTimeout(() => setFlipPop(false), 520);
   }, []);
 
@@ -138,7 +142,7 @@ export default function Home() {
           const nextRunFrame = Math.floor(now / 105) % 5;
           jumpStart.current = null; setJumpY(0); jumpYRef.current = 0;
           flipStart.current = null; flipActiveRef.current = false;
-          setFlipAngle(0); setIsFlipping(false);
+          setFlipAngle(0); setIsFlipping(false); setHasFlipped(false);
           jumpFrameRef.current = nextRunFrame; setJumpFrame(nextRunFrame);
         }
       } else {
@@ -207,7 +211,7 @@ export default function Home() {
   }, [startGame]);
 
   const rank = score >= 1000 ? ['跳過整場大雨！', '★★★'] : score >= 500 ? ['雨靴高手！', '★★☆'] : ['再試一次！', '★☆☆'];
-  const flipOffset = selected === 3 && isFlipping ? (bomiFlipOffsets[jumpFrame] ?? [0, 0]) : [0, 0];
+  const flipOffset = selected === 3 && hasFlipped ? (bomiFlipOffsets[jumpFrame] ?? [0, 0]) : [0, 0];
 
   return <main className="page-shell" style={{ '--panda': panda.color, '--panda-pale': panda.pale } as React.CSSProperties}>
     <section className="phone-stage" aria-label="熊貓水窪跳跳遊戲">
@@ -235,7 +239,7 @@ export default function Home() {
         {flash === 'good' && <div className="game-pop">跳過！ +100</div>}{flash === 'shield' && <div className="game-pop">護盾擋住了！</div>}{flash === 'ouch' && <div className="game-pop ouch-text">噗通！</div>}
         <div className="horizon" /><div className="ground-track" />
         {puddles.map((puddle) => <div key={puddle.id} className="puddle" style={{ left: `${puddle.x}%`, width: `${puddle.width}%` }}><i /><i /></div>)}
-        <div className={isFlipping ? 'runner flipping' : 'runner'} style={{ transform: `translateY(${-jumpY}px) rotate(${flipAngle}deg)` }}><Sprite panda={panda} frame={jumpFrame} offset={flipOffset} /></div>
+        <div className={`runner${isFlipping ? ' flipping' : ''}${selected === 3 && hasFlipped ? ' stabilized' : ''}`} style={{ transform: `translateY(${-jumpY}px) rotate(${flipAngle}deg)` }}><Sprite panda={panda} frame={jumpFrame} offset={flipOffset} /></div>
         <div className="tap-callout"><span>×2</span> 連點翻轉 · 跳得更遠</div>
       </div>}
 
