@@ -4,23 +4,24 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { CloudRain, Footprints, Heart, RotateCcw, Sparkles, Timer } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
-type Panda = { id: string; name: string; color: string; pale: string; power: string; sheet: string };
+type Panda = { id: string; name: string; color: string; pale: string; power: string; sheet: string; footInsets: readonly number[] };
 type Puddle = { id: number; x: number; width: number; settled: boolean; engaged: boolean };
 type WebGameContext = { registerTool: (tool: { name: string; title: string; description: string; inputSchema: object; annotations: { readOnlyHint: boolean; untrustedContentHint: boolean }; execute: (input: unknown) => unknown }, options?: { signal?: AbortSignal }) => void | Promise<void> };
 
 const pandas: Panda[] = [
-  { id: 'enji', name: 'Enji', color: '#58bff5', pale: '#dff4ff', power: '起跑加分', sheet: '/enji-run-jump-v1.png' },
-  { id: 'chorong', name: 'Chorong', color: '#f39ab5', pale: '#ffe5ed', power: '多一顆愛心', sheet: '/chorong-run-jump-v3.png' },
-  { id: 'najoo', name: 'Najoo', color: '#ae85d5', pale: '#f1e7fb', power: '水窪速度較慢', sheet: '/najoo-run-jump-v1.png' },
-  { id: 'bomi', name: 'Bomi', color: '#f4aa38', pale: '#fff0d3', power: '跳躍時間更長', sheet: '/bomi-run-jump-v1.png' },
-  { id: 'hayoung', name: 'Hayoung', color: '#f3ce42', pale: '#fff7cf', power: '擋住一次失誤', sheet: '/hayoung-run-jump-final.png' },
+  // Per-frame footInsets match each sheet's transparent space below the visible feet at the 148px game size.
+  { id: 'enji', name: 'Enji', color: '#58bff5', pale: '#dff4ff', power: '起跑加分', sheet: '/enji-run-jump-v1.png', footInsets: [0, 0, 0, 0, 0, 7, 6, 8, 7, 7] },
+  { id: 'chorong', name: 'Chorong', color: '#f39ab5', pale: '#ffe5ed', power: '多一顆愛心', sheet: '/chorong-run-jump-v3.png', footInsets: [2, 3, 0, 6, 0, 10, 11, 15, 9, 10] },
+  { id: 'najoo', name: 'Najoo', color: '#ae85d5', pale: '#f1e7fb', power: '水窪速度較慢', sheet: '/najoo-run-jump-v1.png', footInsets: [3, 2, 0, 0, 2, 7, 7, 14, 9, 8] },
+  { id: 'bomi', name: 'Bomi', color: '#f4aa38', pale: '#fff0d3', power: '跳躍時間更長', sheet: '/bomi-run-jump-v1.png', footInsets: [3, 2, 0, 11, 3, 7, 7, 14, 12, 5] },
+  { id: 'hayoung', name: 'Hayoung', color: '#f3ce42', pale: '#fff7cf', power: '擋住一次失誤', sheet: '/hayoung-run-jump-final.png', footInsets: [9, 8, 0, 15, 8, 11, 7, 28, 17, 11] },
 ];
 
 const GAME_SECONDS = 45;
 const jumpFrames = [5, 5, 6, 6, 7, 7, 7, 8, 8, 9];
 const FOOT_LEFT = 23.5;
 const FOOT_RIGHT = 31.5;
-const MIN_FOOT_CLEARANCE = 32;
+const MIN_VISIBLE_FOOT_CLEARANCE = 36;
 
 function Sprite({ panda, frame, className = '' }: { panda: Panda; frame: number; className?: string }) {
   return <span className={`panda-sprite ${className}`} style={{ backgroundImage: `url('${panda.sheet}')`, '--frame-x': `${(frame % 5) * 25}%`, '--row-y': frame >= 5 ? '100%' : '0%' } as React.CSSProperties} aria-hidden="true" />;
@@ -41,7 +42,8 @@ export default function Home() {
   const selectedRef = useRef(selected);
   const phaseRef = useRef(phase);
   const jumpYRef = useRef(0);
-  const scoreRef = useRef(0);
+  const jumpFrameRef = useRef(0);
+  const clearedScoreRef = useRef(0);
   const shieldRef = useRef(false);
   const lastTime = useRef(0);
   const panda = pandas[selected];
@@ -53,14 +55,16 @@ export default function Home() {
   const startGame = useCallback((index = selectedRef.current) => {
     selectedRef.current = index;
     const firstScore = index === 0 ? 50 : 0;
-    setSelected(index); setScore(firstScore); scoreRef.current = firstScore; setTime(GAME_SECONDS);
+    setSelected(index); setScore(firstScore); setTime(GAME_SECONDS);
     setHearts(index === 1 ? 4 : 3); setPuddles([]); setJumpY(0); setJumpFrame(0); setFlash(null);
-    jumpStart.current = null; shieldRef.current = index === 4; lastTime.current = performance.now(); setPhase('playing');
+    jumpStart.current = null; jumpFrameRef.current = 0; clearedScoreRef.current = 0;
+    shieldRef.current = index === 4; lastTime.current = performance.now(); setPhase('playing');
   }, []);
 
   const jump = useCallback(() => {
     if (phaseRef.current !== 'playing' || jumpStart.current !== null) return;
     jumpStart.current = performance.now();
+    jumpFrameRef.current = 5;
     setJumpFrame(5);
   }, []);
 
@@ -81,16 +85,24 @@ export default function Home() {
         const duration = selectedRef.current === 3 ? 1120 : 940;
         const progress = Math.min(1, (now - jumpStart.current) / duration);
         const frameIndex = Math.min(jumpFrames.length - 1, Math.floor(progress * jumpFrames.length));
-        setJumpFrame(jumpFrames[frameIndex]);
+        const nextJumpFrame = jumpFrames[frameIndex];
+        jumpFrameRef.current = nextJumpFrame; setJumpFrame(nextJumpFrame);
         const height = Math.sin(progress * Math.PI) * 162;
         setJumpY(height); jumpYRef.current = height;
-        if (progress >= 1) { jumpStart.current = null; setJumpY(0); jumpYRef.current = 0; setJumpFrame(Math.floor(now / 105) % 5) }
+        if (progress >= 1) {
+          const nextRunFrame = Math.floor(now / 105) % 5;
+          jumpStart.current = null; setJumpY(0); jumpYRef.current = 0;
+          jumpFrameRef.current = nextRunFrame; setJumpFrame(nextRunFrame);
+        }
       } else {
-        setJumpFrame(Math.floor(now / 105) % 5);
+        const nextRunFrame = Math.floor(now / 105) % 5;
+        jumpFrameRef.current = nextRunFrame; setJumpFrame(nextRunFrame);
       }
       setPuddles((items) => {
         const remaining: Puddle[] = [];
-        const speed = (selectedRef.current === 2 ? .022 : .028) + Math.min(0.009, scoreRef.current / 80000);
+        const speed = (selectedRef.current === 2 ? .022 : .028) + Math.min(0.009, clearedScoreRef.current / 80000);
+        const activePanda = pandas[selectedRef.current];
+        const visibleFootClearance = jumpYRef.current + (activePanda.footInsets[jumpFrameRef.current] ?? 0);
         for (const puddle of items) {
           const moved = { ...puddle, x: puddle.x - speed * delta };
           const wetLeft = moved.x + moved.width * 0.12;
@@ -99,10 +111,10 @@ export default function Home() {
 
           if (!moved.settled && feetOverWater) {
             moved.engaged = true;
-            if (jumpYRef.current < MIN_FOOT_CLEARANCE && shieldRef.current) {
+            if (visibleFootClearance < MIN_VISIBLE_FOOT_CLEARANCE && shieldRef.current) {
               moved.settled = true;
               shieldRef.current = false; setFlash('shield'); window.setTimeout(() => setFlash(null), 420);
-            } else if (jumpYRef.current < MIN_FOOT_CLEARANCE) {
+            } else if (visibleFootClearance < MIN_VISIBLE_FOOT_CLEARANCE) {
               moved.settled = true;
               setHearts((value) => { const next = value - 1; if (next <= 0) setPhase('over'); return Math.max(0, next) });
               setFlash('ouch'); window.setTimeout(() => setFlash(null), 520);
@@ -111,7 +123,8 @@ export default function Home() {
 
           if (!moved.settled && moved.engaged && wetRight <= FOOT_LEFT) {
             moved.settled = true;
-            setScore((value) => { const next = value + 100; scoreRef.current = next; return next });
+            clearedScoreRef.current += 100;
+            setScore((value) => value + 100);
             setFlash('good'); window.setTimeout(() => setFlash(null), 420);
           }
           if (moved.x > -25) remaining.push(moved);
