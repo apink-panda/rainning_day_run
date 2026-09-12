@@ -20,7 +20,13 @@ const pandas: Panda[] = [
 const GAME_SECONDS = 45;
 const jumpFrames = [5, 5, 6, 6, 7, 7, 7, 8, 8, 9];
 const flipFrames = [5, 6, 7, 8, 9, 8, 7, 6];
+const bomiFlipFrames = [6, 6, 7, 7, 7, 7, 7, 8];
 const flipAngles = [0, 48, 98, 154, 210, 266, 316, 360];
+const bomiFlipOffsets: Record<number, readonly [number, number]> = {
+  6: [-9, -3],
+  7: [9, 16],
+  8: [2, 5],
+};
 const DOUBLE_TAP_WINDOW = 360;
 const FLIP_ANIMATION_MS = 620;
 const FLIP_AIRTIME_BONUS = 360;
@@ -28,8 +34,8 @@ const FOOT_LEFT = 23.5;
 const FOOT_RIGHT = 31.5;
 const MIN_VISIBLE_FOOT_CLEARANCE = 36;
 
-function Sprite({ panda, frame, className = '' }: { panda: Panda; frame: number; className?: string }) {
-  return <span className={`panda-sprite ${className}`} style={{ backgroundImage: `url('${panda.sheet}')`, '--frame-x': `${(frame % 5) * 25}%`, '--row-y': frame >= 5 ? '100%' : '0%' } as React.CSSProperties} aria-hidden="true" />;
+function Sprite({ panda, frame, className = '', offset = [0, 0] }: { panda: Panda; frame: number; className?: string; offset?: readonly [number, number] }) {
+  return <span className={`panda-sprite ${className}`} style={{ backgroundImage: `url('${panda.sheet}')`, '--frame-x': `${(frame % 5) * 25}%`, '--row-y': frame >= 5 ? '100%' : '0%', transform: `translate(${offset[0]}px, ${offset[1]}px)` } as React.CSSProperties} aria-hidden="true" />;
 }
 
 export default function Home() {
@@ -114,9 +120,10 @@ export default function Home() {
         let nextJumpFrame: number;
         if (flipStart.current !== null) {
           const flipProgress = Math.min(1, (now - flipStart.current) / FLIP_ANIMATION_MS);
-          const flipIndex = Math.min(flipFrames.length - 1, Math.floor(flipProgress * flipFrames.length));
-          nextJumpFrame = flipFrames[flipIndex];
-          setFlipAngle(flipAngles[flipIndex]);
+          const activeFlipFrames = selectedRef.current === 3 ? bomiFlipFrames : flipFrames;
+          const flipIndex = Math.min(activeFlipFrames.length - 1, Math.floor(flipProgress * activeFlipFrames.length));
+          nextJumpFrame = activeFlipFrames[flipIndex];
+          setFlipAngle(selectedRef.current === 3 ? flipProgress * 360 : flipAngles[flipIndex]);
           if (flipProgress >= 1) {
             flipStart.current = null; setFlipAngle(0); setIsFlipping(false);
           }
@@ -200,6 +207,7 @@ export default function Home() {
   }, [startGame]);
 
   const rank = score >= 1000 ? ['跳過整場大雨！', '★★★'] : score >= 500 ? ['雨靴高手！', '★★☆'] : ['再試一次！', '★☆☆'];
+  const flipOffset = selected === 3 && isFlipping ? (bomiFlipOffsets[jumpFrame] ?? [0, 0]) : [0, 0];
 
   return <main className="page-shell" style={{ '--panda': panda.color, '--panda-pale': panda.pale } as React.CSSProperties}>
     <section className="phone-stage" aria-label="熊貓水窪跳跳遊戲">
@@ -227,7 +235,7 @@ export default function Home() {
         {flash === 'good' && <div className="game-pop">跳過！ +100</div>}{flash === 'shield' && <div className="game-pop">護盾擋住了！</div>}{flash === 'ouch' && <div className="game-pop ouch-text">噗通！</div>}
         <div className="horizon" /><div className="ground-track" />
         {puddles.map((puddle) => <div key={puddle.id} className="puddle" style={{ left: `${puddle.x}%`, width: `${puddle.width}%` }}><i /><i /></div>)}
-        <div className={isFlipping ? 'runner flipping' : 'runner'} style={{ transform: `translateY(${-jumpY}px) rotate(${flipAngle}deg)` }}><Sprite panda={panda} frame={jumpFrame} /></div>
+        <div className={isFlipping ? 'runner flipping' : 'runner'} style={{ transform: `translateY(${-jumpY}px) rotate(${flipAngle}deg)` }}><Sprite panda={panda} frame={jumpFrame} offset={flipOffset} /></div>
         <div className="tap-callout"><span>×2</span> 連點翻轉 · 跳得更遠</div>
       </div>}
 
