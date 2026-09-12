@@ -75,7 +75,9 @@ export default function Home() {
       return value - 1;
     }), 1000);
     const spawner = window.setInterval(() => setPuddles((items) => [...items, {
-      id: nextId.current++, x: 112, width: 13 + Math.random() * 8, settled: false, engaged: false,
+      id: nextId.current++, x: 112,
+      width: selectedRef.current === 2 ? 12 + Math.random() * 5 : 13 + Math.random() * 8,
+      settled: false, engaged: false,
     }]), selectedRef.current === 2 ? 1800 : 1500);
 
     let raf = 0;
@@ -100,10 +102,13 @@ export default function Home() {
       }
       setPuddles((items) => {
         const remaining: Puddle[] = [];
-        const speed = (selectedRef.current === 2 ? .022 : .028) + Math.min(0.009, clearedScoreRef.current / 80000);
         const activePanda = pandas[selectedRef.current];
         const visibleFootClearance = jumpYRef.current + (activePanda.footInsets[jumpFrameRef.current] ?? 0);
         for (const puddle of items) {
+          const baseSpeed = selectedRef.current === 2
+            ? (puddle.engaged ? .032 : .022)
+            : .028;
+          const speed = baseSpeed + Math.min(0.009, clearedScoreRef.current / 80000);
           const moved = { ...puddle, x: puddle.x - speed * delta };
           const wetLeft = moved.x + moved.width * 0.12;
           const wetRight = moved.x + moved.width * 0.88;
