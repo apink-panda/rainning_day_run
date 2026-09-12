@@ -5,7 +5,7 @@ import { CloudRain, Footprints, Heart, RotateCcw, Sparkles, Timer } from 'lucide
 import { Button } from '@/components/ui/button';
 
 type Panda = { id: string; name: string; color: string; pale: string; power: string; sheet: string };
-type Puddle = { id: number; x: number; width: number; settled: boolean };
+type Puddle = { id: number; x: number; width: number; settled: boolean; engaged: boolean };
 type WebGameContext = { registerTool: (tool: { name: string; title: string; description: string; inputSchema: object; annotations: { readOnlyHint: boolean; untrustedContentHint: boolean }; execute: (input: unknown) => unknown }, options?: { signal?: AbortSignal }) => void | Promise<void> };
 
 const pandas: Panda[] = [
@@ -18,6 +18,9 @@ const pandas: Panda[] = [
 
 const GAME_SECONDS = 45;
 const jumpFrames = [5, 5, 6, 6, 7, 7, 7, 8, 8, 9];
+const FOOT_LEFT = 23.5;
+const FOOT_RIGHT = 31.5;
+const MIN_FOOT_CLEARANCE = 32;
 
 function Sprite({ panda, frame, className = '' }: { panda: Panda; frame: number; className?: string }) {
   return <span className={`panda-sprite ${className}`} style={{ backgroundImage: `url('${panda.sheet}')`, '--frame-x': `${(frame % 5) * 25}%`, '--row-y': frame >= 5 ? '100%' : '0%' } as React.CSSProperties} aria-hidden="true" />;
@@ -32,7 +35,7 @@ export default function Home() {
   const [puddles, setPuddles] = useState<Puddle[]>([]);
   const [jumpY, setJumpY] = useState(0);
   const [jumpFrame, setJumpFrame] = useState(0);
-  const [flash, setFlash] = useState<'good' | 'ouch' | null>(null);
+  const [flash, setFlash] = useState<'good' | 'ouch' | 'shield' | null>(null);
   const nextId = useRef(1);
   const jumpStart = useRef<number | null>(null);
   const selectedRef = useRef(selected);
@@ -68,7 +71,7 @@ export default function Home() {
       return value - 1;
     }), 1000);
     const spawner = window.setInterval(() => setPuddles((items) => [...items, {
-      id: nextId.current++, x: 112, width: 13 + Math.random() * 8, settled: false,
+      id: nextId.current++, x: 112, width: 13 + Math.random() * 8, settled: false, engaged: false,
     }]), selectedRef.current === 2 ? 1800 : 1500);
 
     let raf = 0;
@@ -90,17 +93,26 @@ export default function Home() {
         const speed = (selectedRef.current === 2 ? .022 : .028) + Math.min(0.009, scoreRef.current / 80000);
         for (const puddle of items) {
           const moved = { ...puddle, x: puddle.x - speed * delta };
-          const inCollision = !moved.settled && moved.x < 35 && moved.x + moved.width > 16;
-          if (inCollision) {
-            moved.settled = true;
-            if (jumpYRef.current > 56) {
-              setScore((value) => { const next = value + 100; scoreRef.current = next; return next }); setFlash('good'); window.setTimeout(() => setFlash(null), 420);
-            } else if (shieldRef.current) {
-              shieldRef.current = false; setFlash('good'); window.setTimeout(() => setFlash(null), 420);
-            } else {
+          const wetLeft = moved.x + moved.width * 0.12;
+          const wetRight = moved.x + moved.width * 0.88;
+          const feetOverWater = wetLeft < FOOT_RIGHT && wetRight > FOOT_LEFT;
+
+          if (!moved.settled && feetOverWater) {
+            moved.engaged = true;
+            if (jumpYRef.current < MIN_FOOT_CLEARANCE && shieldRef.current) {
+              moved.settled = true;
+              shieldRef.current = false; setFlash('shield'); window.setTimeout(() => setFlash(null), 420);
+            } else if (jumpYRef.current < MIN_FOOT_CLEARANCE) {
+              moved.settled = true;
               setHearts((value) => { const next = value - 1; if (next <= 0) setPhase('over'); return Math.max(0, next) });
               setFlash('ouch'); window.setTimeout(() => setFlash(null), 520);
             }
+          }
+
+          if (!moved.settled && moved.engaged && wetRight <= FOOT_LEFT) {
+            moved.settled = true;
+            setScore((value) => { const next = value + 100; scoreRef.current = next; return next });
+            setFlash('good'); window.setTimeout(() => setFlash(null), 420);
           }
           if (moved.x > -25) remaining.push(moved);
         }
@@ -152,10 +164,10 @@ export default function Home() {
         <Button className="start-button" onClick={() => startGame()}>開始跳跳 <Footprints size={19} /></Button>
       </div>}
 
-      {phase === 'playing' && <div className={`play-field ${flash ?? ''}`} onPointerDown={(event) => { event.preventDefault(); jump() }} role="button" tabIndex={0} onKeyDown={(event) => { if (event.code === 'Space' || event.code === 'Enter') { event.preventDefault(); jump() } }} aria-label="輕點或按空白鍵跳躍">
+      {phase === 'playing' && <div className={`play-field ${flash === 'shield' ? 'good' : (flash ?? '')}`} onPointerDown={(event) => { event.preventDefault(); jump() }} role="button" tabIndex={0} onKeyDown={(event) => { if (event.code === 'Space' || event.code === 'Enter') { event.preventDefault(); jump() } }} aria-label="輕點或按空白鍵跳躍">
         <div className="hud"><div><span>距離</span><strong>{score}m</strong></div><div className="time"><Timer size={15} /><strong>{time}</strong><span>秒</span></div><div className="hearts" aria-label={`剩下 ${hearts} 顆愛心`}>{Array.from({ length: selected === 1 ? 4 : 3 }).map((_, i) => <Heart key={i} size={16} fill={i < hearts ? 'currentColor' : 'transparent'} />)}</div></div>
         <div className="frame-badge">{panda.name} · {jumpFrame >= 5 ? `JUMP ${jumpFrame - 4}/5` : `RUN ${jumpFrame + 1}/5`}</div>
-        {flash === 'good' && <div className="game-pop">跳過！ +100</div>}{flash === 'ouch' && <div className="game-pop ouch-text">噗通！</div>}
+        {flash === 'good' && <div className="game-pop">跳過！ +100</div>}{flash === 'shield' && <div className="game-pop">護盾擋住了！</div>}{flash === 'ouch' && <div className="game-pop ouch-text">噗通！</div>}
         <div className="horizon" /><div className="ground-track" />
         {puddles.map((puddle) => <div key={puddle.id} className="puddle" style={{ left: `${puddle.x}%`, width: `${puddle.width}%` }}><i /><i /></div>)}
         <div className="runner" style={{ transform: `translateY(${-jumpY}px)` }}><Sprite panda={panda} frame={jumpFrame} /></div>
