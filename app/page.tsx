@@ -73,6 +73,7 @@ export default function Home() {
   const [flash, setFlash] = useState<'good' | 'ouch' | 'need-flip' | null>(null);
   const [isHurt, setIsHurt] = useState(false);
   const [isInvulnerable, setIsInvulnerable] = useState(false);
+  const obstaclesRef = useRef<Obstacle[]>([]);
   const nextId = useRef(1);
   const spawnCount = useRef(0);
   const gameStart = useRef(0);
@@ -96,6 +97,13 @@ export default function Home() {
   useEffect(() => { selectedRef.current = selected }, [selected]);
   useEffect(() => { phaseRef.current = phase }, [phase]);
   useEffect(() => { jumpYRef.current = jumpY }, [jumpY]);
+  useEffect(() => {
+    // Keep every character's first-hit expression ready before play begins.
+    for (const character of pandas) {
+      const image = new window.Image();
+      image.src = `/selection-frames/${character.id}/frame-2.png`;
+    }
+  }, []);
   useEffect(() => () => {
     if (hurtTimer.current !== null) window.clearTimeout(hurtTimer.current);
     if (invulnerableTimer.current !== null) window.clearTimeout(invulnerableTimer.current);
@@ -115,6 +123,7 @@ export default function Home() {
   const startGame = useCallback((index = selectedRef.current) => {
     selectedRef.current = index;
     setSelected(index); setScore(0); setTime(GAME_SECONDS);
+    obstaclesRef.current = [];
     setHearts(3); setObstacles([]); setJumpY(0); setJumpFrame(0); setFlipAngle(0);
     setIsFlipping(false); setHasFlipped(false); setFlipPop(false); setFlash(null);
     setIsHurt(false); setIsInvulnerable(false);
@@ -159,7 +168,8 @@ export default function Home() {
       const speed = obstacleSpeed(performance.now() - gameStart.current);
       const width = kind === 'wide' ? 26 + (speed - BASE_OBSTACLE_SPEED) * 700
         : kind === 'rock' ? 10 + Math.random() * 3 : 13 + Math.random() * 8;
-      setObstacles((items) => [...items, { id: nextId.current++, kind, x: 112, width, settled: false, engaged: false, flipped: false }]);
+      obstaclesRef.current = [...obstaclesRef.current, { id: nextId.current++, kind, x: 112, width, settled: false, engaged: false, flipped: false }];
+      setObstacles(obstaclesRef.current);
     }, 1500);
 
     let raf = 0;
@@ -214,11 +224,11 @@ export default function Home() {
         }
         setFlash(reason); window.setTimeout(() => setFlash(null), 520);
       };
-      setObstacles((items) => {
+      {
         const remaining: Obstacle[] = [];
         const activePanda = pandas[selectedRef.current];
         const visibleFootClearance = jumpYRef.current + (activePanda.footInsets[jumpFrameRef.current] ?? 0);
-        for (const obstacle of items) {
+        for (const obstacle of obstaclesRef.current) {
           const moved = { ...obstacle, x: obstacle.x - speed * delta };
           const isWide = moved.kind === 'wide';
           const contactLeft = moved.x + moved.width * (isWide ? 0.16 : 0.12);
@@ -251,8 +261,9 @@ export default function Home() {
           }
           if (moved.x > -25) remaining.push(moved);
         }
-        return remaining;
-      });
+        obstaclesRef.current = remaining;
+        setObstacles(remaining);
+      }
       if (phaseRef.current === 'playing') raf = requestAnimationFrame(animate);
     };
     raf = requestAnimationFrame(animate);
@@ -309,7 +320,8 @@ export default function Home() {
           ? <div key={obstacle.id} className="rock" style={{ left: `${obstacle.x}%`, width: `${obstacle.width}%` }} aria-hidden="true">🪨</div>
           : <div key={obstacle.id} className={`puddle${obstacle.kind === 'wide' ? ' wide-puddle' : ''}`} style={{ left: `${obstacle.x}%`, width: `${obstacle.width}%` }} aria-hidden="true"><i /><i />{obstacle.kind === 'wide' && <span>×2 連跳</span>}</div>)}
         <div className={`runner${isFlipping ? ' flipping' : ''}${selected === 3 && hasFlipped ? ' stabilized' : ''}${isHurt ? ' hurt' : ''}${isInvulnerable ? ' invulnerable' : ''}`} style={{ transform: `translateY(${-jumpY}px) rotate(${flipAngle}deg)` }}>
-          {isHurt ? <ShowcaseSprite panda={panda} frame={1} className="hurt-sprite" /> : <Sprite panda={panda} frame={jumpFrame} offset={flipOffset} />}
+          <Sprite panda={panda} frame={jumpFrame} offset={flipOffset} />
+          <ShowcaseSprite panda={panda} frame={1} className="hurt-sprite" />
           {isHurt && <span className="hurt-drop" aria-hidden="true">💧</span>}
         </div>
         <div className="tap-callout"><span>×2</span> 連點翻轉 · 跳得更遠</div>

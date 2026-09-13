@@ -404,9 +404,18 @@ button {
   transition: transform 55ms linear;
 }
 .runner .hurt-sprite {
+  position: absolute;
+  inset: 0;
   width: 148px;
   height: 148px;
+  opacity: 0;
   filter: drop-shadow(0 0 12px rgb(255 112 144 / 68%));
+}
+.runner.hurt .panda-sprite {
+  opacity: 0;
+}
+.runner.hurt .hurt-sprite {
+  opacity: 1;
 }
 .runner.hurt {
   animation: hurtJolt 0.17s ease-in-out 3;
