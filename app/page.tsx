@@ -39,6 +39,8 @@ const MIN_VISIBLE_FOOT_CLEARANCE = 36;
 const ROCK_FOOT_CLEARANCE = 58;
 const WIDE_FLIP_CLEARANCE = 24;
 const WIDE_LANDING_GRACE_MS = 120;
+const HURT_EXPRESSION_MS = 720;
+const INVULNERABLE_MS = 2400;
 const BASE_OBSTACLE_SPEED = 0.028;
 const MAX_OBSTACLE_SPEED = 0.045;
 
@@ -69,6 +71,8 @@ export default function Home() {
   const [flipPop, setFlipPop] = useState(false);
   const [showcaseFrame, setShowcaseFrame] = useState(0);
   const [flash, setFlash] = useState<'good' | 'ouch' | 'need-flip' | null>(null);
+  const [isHurt, setIsHurt] = useState(false);
+  const [isInvulnerable, setIsInvulnerable] = useState(false);
   const nextId = useRef(1);
   const spawnCount = useRef(0);
   const gameStart = useRef(0);
@@ -76,6 +80,11 @@ export default function Home() {
   const flipStart = useRef<number | null>(null);
   const flipActiveRef = useRef(false);
   const lastFlipLandingAt = useRef(0);
+  const invulnerableUntil = useRef(0);
+  const heartsRef = useRef(3);
+  const hurtTimer = useRef<number | null>(null);
+  const invulnerableTimer = useRef<number | null>(null);
+  const gameOverTimer = useRef<number | null>(null);
   const selectedRef = useRef(selected);
   const phaseRef = useRef(phase);
   const jumpYRef = useRef(0);
@@ -87,6 +96,11 @@ export default function Home() {
   useEffect(() => { selectedRef.current = selected }, [selected]);
   useEffect(() => { phaseRef.current = phase }, [phase]);
   useEffect(() => { jumpYRef.current = jumpY }, [jumpY]);
+  useEffect(() => () => {
+    if (hurtTimer.current !== null) window.clearTimeout(hurtTimer.current);
+    if (invulnerableTimer.current !== null) window.clearTimeout(invulnerableTimer.current);
+    if (gameOverTimer.current !== null) window.clearTimeout(gameOverTimer.current);
+  }, []);
   useEffect(() => {
     if (phase !== 'ready') return;
     setShowcaseFrame(0);
@@ -103,6 +117,12 @@ export default function Home() {
     setSelected(index); setScore(0); setTime(GAME_SECONDS);
     setHearts(3); setObstacles([]); setJumpY(0); setJumpFrame(0); setFlipAngle(0);
     setIsFlipping(false); setHasFlipped(false); setFlipPop(false); setFlash(null);
+    setIsHurt(false); setIsInvulnerable(false);
+    if (hurtTimer.current !== null) window.clearTimeout(hurtTimer.current);
+    if (invulnerableTimer.current !== null) window.clearTimeout(invulnerableTimer.current);
+    if (gameOverTimer.current !== null) window.clearTimeout(gameOverTimer.current);
+    hurtTimer.current = null; invulnerableTimer.current = null; gameOverTimer.current = null;
+    invulnerableUntil.current = 0; heartsRef.current = 3;
     jumpStart.current = null; flipStart.current = null; flipActiveRef.current = false; lastFlipLandingAt.current = 0;
     jumpFrameRef.current = 0; clearedScoreRef.current = 0; spawnCount.current = 0;
     gameStart.current = performance.now(); lastTime.current = gameStart.current; setPhase('playing');
@@ -180,7 +200,18 @@ export default function Home() {
       }
       const speed = obstacleSpeed(now - gameStart.current);
       const takeHit = (reason: 'ouch' | 'need-flip') => {
-        setHearts((value) => { const next = value - 1; if (next <= 0) setPhase('over'); return Math.max(0, next) });
+        if (now < invulnerableUntil.current) return;
+        invulnerableUntil.current = now + INVULNERABLE_MS;
+        setIsHurt(true); setIsInvulnerable(true);
+        if (hurtTimer.current !== null) window.clearTimeout(hurtTimer.current);
+        if (invulnerableTimer.current !== null) window.clearTimeout(invulnerableTimer.current);
+        hurtTimer.current = window.setTimeout(() => { setIsHurt(false); hurtTimer.current = null }, HURT_EXPRESSION_MS);
+        invulnerableTimer.current = window.setTimeout(() => { setIsInvulnerable(false); invulnerableTimer.current = null }, INVULNERABLE_MS);
+        heartsRef.current = Math.max(0, heartsRef.current - 1);
+        setHearts(heartsRef.current);
+        if (heartsRef.current === 0) {
+          gameOverTimer.current = window.setTimeout(() => { setPhase('over'); gameOverTimer.current = null }, HURT_EXPRESSION_MS);
+        }
         setFlash(reason); window.setTimeout(() => setFlash(null), 520);
       };
       setObstacles((items) => {
@@ -270,14 +301,17 @@ export default function Home() {
 
       {phase === 'playing' && <div className={`play-field ${flash === 'need-flip' ? 'ouch' : (flash ?? '')}`} style={{ '--road-duration': `${0.65 * BASE_OBSTACLE_SPEED / obstacleSpeed((GAME_SECONDS - time) * 1000)}s` } as React.CSSProperties} onPointerDown={(event) => { event.preventDefault(); jump() }} role="button" tabIndex={0} onKeyDown={(event) => { if (!event.repeat && (event.code === 'Space' || event.code === 'Enter')) { event.preventDefault(); jump() } }} aria-label="輕點跳過石頭與水窪，長水窪連點兩下空中翻轉">
         <div className="hud"><div><span>距離</span><strong>{score}m</strong></div><div className="time"><Timer size={15} /><strong>{time}</strong><span>秒</span></div><div className="hearts" aria-label={`剩下 ${hearts} 顆愛心`}>{Array.from({ length: 3 }).map((_, i) => <Heart key={i} size={16} fill={i < hearts ? 'currentColor' : 'transparent'} />)}</div></div>
-        <div className="frame-badge">{panda.name} · 速度 ×{(obstacleSpeed((GAME_SECONDS - time) * 1000) / BASE_OBSTACLE_SPEED).toFixed(1)} · {isFlipping ? `FLIP ${Math.min(8, Math.floor(flipAngle / 45) + 1)}/8` : (jumpFrame >= 5 ? `JUMP ${jumpFrame - 4}/5` : `RUN ${jumpFrame + 1}/5`)}</div>
+        <div className="frame-badge">{panda.name} · 速度 ×{(obstacleSpeed((GAME_SECONDS - time) * 1000) / BASE_OBSTACLE_SPEED).toFixed(1)} · {isInvulnerable ? '無敵中' : isFlipping ? `FLIP ${Math.min(8, Math.floor(flipAngle / 45) + 1)}/8` : (jumpFrame >= 5 ? `JUMP ${jumpFrame - 4}/5` : `RUN ${jumpFrame + 1}/5`)}</div>
         {flipPop && <div className="game-pop flip-text">空中翻轉！ 跳更遠</div>}
         {flash === 'good' && <div className="game-pop">跳過！ +100</div>}{flash === 'ouch' && <div className="game-pop ouch-text">碰到了！</div>}{flash === 'need-flip' && <div className="game-pop ouch-text">要連點兩下！</div>}
         <div className="horizon" /><div className="ground-track" />
         {obstacles.map((obstacle) => obstacle.kind === 'rock'
           ? <div key={obstacle.id} className="rock" style={{ left: `${obstacle.x}%`, width: `${obstacle.width}%` }} aria-hidden="true">🪨</div>
           : <div key={obstacle.id} className={`puddle${obstacle.kind === 'wide' ? ' wide-puddle' : ''}`} style={{ left: `${obstacle.x}%`, width: `${obstacle.width}%` }} aria-hidden="true"><i /><i />{obstacle.kind === 'wide' && <span>×2 連跳</span>}</div>)}
-        <div className={`runner${isFlipping ? ' flipping' : ''}${selected === 3 && hasFlipped ? ' stabilized' : ''}`} style={{ transform: `translateY(${-jumpY}px) rotate(${flipAngle}deg)` }}><Sprite panda={panda} frame={jumpFrame} offset={flipOffset} /></div>
+        <div className={`runner${isFlipping ? ' flipping' : ''}${selected === 3 && hasFlipped ? ' stabilized' : ''}${isHurt ? ' hurt' : ''}${isInvulnerable ? ' invulnerable' : ''}`} style={{ transform: `translateY(${-jumpY}px) rotate(${flipAngle}deg)` }}>
+          {isHurt ? <ShowcaseSprite panda={panda} frame={1} className="hurt-sprite" /> : <Sprite panda={panda} frame={jumpFrame} offset={flipOffset} />}
+          {isHurt && <span className="hurt-drop" aria-hidden="true">💧</span>}
+        </div>
         <div className="tap-callout"><span>×2</span> 連點翻轉 · 跳得更遠</div>
       </div>}
 

@@ -403,6 +403,30 @@ button {
   filter: drop-shadow(0 8px 8px rgb(5 22 48 / 28%));
   transition: transform 55ms linear;
 }
+.runner .hurt-sprite {
+  width: 148px;
+  height: 148px;
+  filter: drop-shadow(0 0 12px rgb(255 112 144 / 68%));
+}
+.runner.hurt {
+  animation: hurtJolt 0.17s ease-in-out 3;
+}
+.runner.invulnerable:not(.hurt) {
+  animation: invulnerableBlink 0.32s steps(1, end) infinite;
+}
+.hurt-drop {
+  position: absolute;
+  top: 3px;
+  right: 6px;
+  font-size: 23px;
+  filter: drop-shadow(0 2px 2px rgb(0 15 44 / 50%));
+}
+@keyframes hurtJolt {
+  50% { translate: 5px 0; }
+}
+@keyframes invulnerableBlink {
+  50% { opacity: 0.42; }
+}
 .puddle {
   position: absolute;
   z-index: 12;
@@ -609,5 +633,9 @@ button {
   }
   .runner {
     transition: none;
+  }
+  .runner.hurt,
+  .runner.invulnerable:not(.hurt) {
+    animation: none;
   }
 }
