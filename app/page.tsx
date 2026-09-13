@@ -37,6 +37,8 @@ const FOOT_LEFT = 23.5;
 const FOOT_RIGHT = 31.5;
 const MIN_VISIBLE_FOOT_CLEARANCE = 36;
 const ROCK_FOOT_CLEARANCE = 58;
+const WIDE_FLIP_CLEARANCE = 24;
+const WIDE_LANDING_GRACE_MS = 120;
 const BASE_OBSTACLE_SPEED = 0.028;
 const MAX_OBSTACLE_SPEED = 0.045;
 
@@ -73,6 +75,7 @@ export default function Home() {
   const jumpStart = useRef<number | null>(null);
   const flipStart = useRef<number | null>(null);
   const flipActiveRef = useRef(false);
+  const lastFlipLandingAt = useRef(0);
   const selectedRef = useRef(selected);
   const phaseRef = useRef(phase);
   const jumpYRef = useRef(0);
@@ -100,7 +103,7 @@ export default function Home() {
     setSelected(index); setScore(0); setTime(GAME_SECONDS);
     setHearts(3); setObstacles([]); setJumpY(0); setJumpFrame(0); setFlipAngle(0);
     setIsFlipping(false); setHasFlipped(false); setFlipPop(false); setFlash(null);
-    jumpStart.current = null; flipStart.current = null; flipActiveRef.current = false;
+    jumpStart.current = null; flipStart.current = null; flipActiveRef.current = false; lastFlipLandingAt.current = 0;
     jumpFrameRef.current = 0; clearedScoreRef.current = 0; spawnCount.current = 0;
     gameStart.current = performance.now(); lastTime.current = gameStart.current; setPhase('playing');
   }, []);
@@ -165,6 +168,7 @@ export default function Home() {
         setJumpY(height); jumpYRef.current = height;
         if (progress >= 1) {
           const nextRunFrame = Math.floor(now / 105) % 5;
+          if (flipActiveRef.current) lastFlipLandingAt.current = now;
           jumpStart.current = null; setJumpY(0); jumpYRef.current = 0;
           flipStart.current = null; flipActiveRef.current = false;
           setFlipAngle(0); setIsFlipping(false); setHasFlipped(false);
@@ -185,23 +189,28 @@ export default function Home() {
         const visibleFootClearance = jumpYRef.current + (activePanda.footInsets[jumpFrameRef.current] ?? 0);
         for (const obstacle of items) {
           const moved = { ...obstacle, x: obstacle.x - speed * delta };
-          const contactLeft = moved.x + moved.width * 0.12;
-          const contactRight = moved.x + moved.width * 0.88;
-          const feetOverObstacle = contactLeft < FOOT_RIGHT && contactRight > FOOT_LEFT;
-          const requiredClearance = moved.kind === 'rock' ? ROCK_FOOT_CLEARANCE : MIN_VISIBLE_FOOT_CLEARANCE;
+          const isWide = moved.kind === 'wide';
+          const contactLeft = moved.x + moved.width * (isWide ? 0.16 : 0.12);
+          const contactRight = moved.x + moved.width * (isWide ? 0.84 : 0.88);
+          const feetOverObstacle = contactLeft < (isWide ? 30 : FOOT_RIGHT) && contactRight > (isWide ? 25 : FOOT_LEFT);
+          if (isWide && feetOverObstacle && flipActiveRef.current) moved.flipped = true;
+          const requiredClearance = moved.kind === 'rock' ? ROCK_FOOT_CLEARANCE
+            : isWide && moved.flipped ? WIDE_FLIP_CLEARANCE : MIN_VISIBLE_FOOT_CLEARANCE;
 
           if (!moved.settled && feetOverObstacle) {
             moved.engaged = true;
-            if (moved.kind === 'wide' && flipActiveRef.current) moved.flipped = true;
-            if (visibleFootClearance < requiredClearance) {
+            const waitingForSecondTap = isWide && !moved.flipped && jumpStart.current !== null
+              && now - jumpStart.current <= DOUBLE_TAP_WINDOW;
+            const justLandedFlip = isWide && moved.flipped && now - lastFlipLandingAt.current <= WIDE_LANDING_GRACE_MS;
+            if (!waitingForSecondTap && !justLandedFlip && visibleFootClearance < requiredClearance) {
               moved.settled = true;
-              takeHit('ouch');
+              takeHit(isWide && !moved.flipped ? 'need-flip' : 'ouch');
             }
           }
 
-          if (!moved.settled && moved.engaged && contactRight <= FOOT_LEFT) {
+          if (!moved.settled && moved.engaged && contactRight <= (isWide ? 25 : FOOT_LEFT)) {
             moved.settled = true;
-            if (moved.kind === 'wide' && !moved.flipped) {
+            if (isWide && !moved.flipped) {
               takeHit('need-flip');
             } else {
               clearedScoreRef.current += 100;
