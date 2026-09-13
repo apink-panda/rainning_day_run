@@ -380,7 +380,7 @@ button {
     rgb(139 184 215 / 28%) 61px 63px,
     transparent 63px 118px
   );
-  animation: roadRun 0.65s linear infinite;
+  animation: roadRun var(--road-duration, 0.65s) linear infinite;
 }
 @keyframes roadRun {
   to {
@@ -429,6 +429,37 @@ button {
 .puddle i:last-child {
   right: 22%;
   top: -5px;
+}
+.wide-puddle {
+  background: #2c80b8;
+  border-color: #a0e3ff;
+  box-shadow: inset 0 -4px 0 #165989, 0 0 18px rgb(104 210 255 / 42%);
+}
+.wide-puddle span {
+  position: absolute;
+  bottom: 25px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 4px 8px;
+  border: 1px solid #b6edff;
+  border-radius: 999px;
+  background: #0d426c;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 900;
+  white-space: nowrap;
+  box-shadow: 0 3px 9px rgb(0 17 40 / 35%);
+}
+.rock {
+  position: absolute;
+  z-index: 12;
+  bottom: 98px;
+  height: 48px;
+  display: grid;
+  place-items: end center;
+  font-size: 43px;
+  line-height: 1;
+  filter: drop-shadow(0 5px 3px rgb(0 8 23 / 45%));
 }
 .tap-callout {
   position: absolute;
@@ -563,6 +594,9 @@ button {
   }
   .puddle {
     bottom: 84px;
+  }
+  .rock {
+    bottom: 78px;
   }
   .tap-callout {
     bottom: 12px;

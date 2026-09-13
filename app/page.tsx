@@ -5,7 +5,7 @@ import { CloudRain, Footprints, Heart, RotateCcw, Timer } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 type Panda = { id: string; name: string; color: string; pale: string; sheet: string; footInsets: readonly number[] };
-type Puddle = { id: number; x: number; width: number; settled: boolean; engaged: boolean };
+type Obstacle = { id: number; kind: 'puddle' | 'rock' | 'wide'; x: number; width: number; settled: boolean; engaged: boolean; flipped: boolean };
 type WebGameContext = { registerTool: (tool: { name: string; title: string; description: string; inputSchema: object; annotations: { readOnlyHint: boolean; untrustedContentHint: boolean }; execute: (input: unknown) => unknown }, options?: { signal?: AbortSignal }) => void | Promise<void> };
 
 const pandas: Panda[] = [
@@ -36,6 +36,13 @@ const FLIP_AIRTIME_BONUS = 360;
 const FOOT_LEFT = 23.5;
 const FOOT_RIGHT = 31.5;
 const MIN_VISIBLE_FOOT_CLEARANCE = 36;
+const ROCK_FOOT_CLEARANCE = 58;
+const BASE_OBSTACLE_SPEED = 0.028;
+const MAX_OBSTACLE_SPEED = 0.045;
+
+function obstacleSpeed(elapsed: number) {
+  return BASE_OBSTACLE_SPEED + (MAX_OBSTACLE_SPEED - BASE_OBSTACLE_SPEED) * Math.min(1, elapsed / (GAME_SECONDS * 1000));
+}
 
 function Sprite({ panda, frame, className = '', offset = [0, 0] }: { panda: Panda; frame: number; className?: string; offset?: readonly [number, number] }) {
   return <span className={`panda-sprite ${className}`} style={{ backgroundImage: `url('${panda.sheet}')`, '--frame-x': `${(frame % 5) * 25}%`, '--row-y': frame >= 5 ? '100%' : '0%', transform: `translate(${offset[0]}px, ${offset[1]}px)` } as React.CSSProperties} aria-hidden="true" />;
@@ -51,7 +58,7 @@ export default function Home() {
   const [score, setScore] = useState(0);
   const [time, setTime] = useState(GAME_SECONDS);
   const [hearts, setHearts] = useState(3);
-  const [puddles, setPuddles] = useState<Puddle[]>([]);
+  const [obstacles, setObstacles] = useState<Obstacle[]>([]);
   const [jumpY, setJumpY] = useState(0);
   const [jumpFrame, setJumpFrame] = useState(0);
   const [flipAngle, setFlipAngle] = useState(0);
@@ -59,8 +66,10 @@ export default function Home() {
   const [hasFlipped, setHasFlipped] = useState(false);
   const [flipPop, setFlipPop] = useState(false);
   const [showcaseFrame, setShowcaseFrame] = useState(0);
-  const [flash, setFlash] = useState<'good' | 'ouch' | null>(null);
+  const [flash, setFlash] = useState<'good' | 'ouch' | 'need-flip' | null>(null);
   const nextId = useRef(1);
+  const spawnCount = useRef(0);
+  const gameStart = useRef(0);
   const jumpStart = useRef<number | null>(null);
   const flipStart = useRef<number | null>(null);
   const flipActiveRef = useRef(false);
@@ -89,11 +98,11 @@ export default function Home() {
   const startGame = useCallback((index = selectedRef.current) => {
     selectedRef.current = index;
     setSelected(index); setScore(0); setTime(GAME_SECONDS);
-    setHearts(3); setPuddles([]); setJumpY(0); setJumpFrame(0); setFlipAngle(0);
+    setHearts(3); setObstacles([]); setJumpY(0); setJumpFrame(0); setFlipAngle(0);
     setIsFlipping(false); setHasFlipped(false); setFlipPop(false); setFlash(null);
     jumpStart.current = null; flipStart.current = null; flipActiveRef.current = false;
-    jumpFrameRef.current = 0; clearedScoreRef.current = 0;
-    lastTime.current = performance.now(); setPhase('playing');
+    jumpFrameRef.current = 0; clearedScoreRef.current = 0; spawnCount.current = 0;
+    gameStart.current = performance.now(); lastTime.current = gameStart.current; setPhase('playing');
   }, []);
 
   const jump = useCallback(() => {
@@ -121,11 +130,14 @@ export default function Home() {
       if (value <= 1) { setPhase('over'); return 0 }
       return value - 1;
     }), 1000);
-    const spawner = window.setInterval(() => setPuddles((items) => [...items, {
-      id: nextId.current++, x: 112,
-      width: 13 + Math.random() * 8,
-      settled: false, engaged: false,
-    }]), 1500);
+    const spawner = window.setInterval(() => {
+      const spawnIndex = spawnCount.current++;
+      const kind: Obstacle['kind'] = spawnIndex % 5 === 4 ? 'wide' : spawnIndex % 2 === 1 ? 'rock' : 'puddle';
+      const speed = obstacleSpeed(performance.now() - gameStart.current);
+      const width = kind === 'wide' ? 26 + (speed - BASE_OBSTACLE_SPEED) * 700
+        : kind === 'rock' ? 10 + Math.random() * 3 : 13 + Math.random() * 8;
+      setObstacles((items) => [...items, { id: nextId.current++, kind, x: 112, width, settled: false, engaged: false, flipped: false }]);
+    }, 1500);
 
     let raf = 0;
     const animate = (now: number) => {
@@ -162,32 +174,40 @@ export default function Home() {
         const nextRunFrame = Math.floor(now / 105) % 5;
         jumpFrameRef.current = nextRunFrame; setJumpFrame(nextRunFrame);
       }
-      setPuddles((items) => {
-        const remaining: Puddle[] = [];
+      const speed = obstacleSpeed(now - gameStart.current);
+      const takeHit = (reason: 'ouch' | 'need-flip') => {
+        setHearts((value) => { const next = value - 1; if (next <= 0) setPhase('over'); return Math.max(0, next) });
+        setFlash(reason); window.setTimeout(() => setFlash(null), 520);
+      };
+      setObstacles((items) => {
+        const remaining: Obstacle[] = [];
         const activePanda = pandas[selectedRef.current];
         const visibleFootClearance = jumpYRef.current + (activePanda.footInsets[jumpFrameRef.current] ?? 0);
-        for (const puddle of items) {
-          const baseSpeed = .028;
-          const speed = baseSpeed + Math.min(0.009, clearedScoreRef.current / 80000);
-          const moved = { ...puddle, x: puddle.x - speed * delta };
-          const wetLeft = moved.x + moved.width * 0.12;
-          const wetRight = moved.x + moved.width * 0.88;
-          const feetOverWater = wetLeft < FOOT_RIGHT && wetRight > FOOT_LEFT;
+        for (const obstacle of items) {
+          const moved = { ...obstacle, x: obstacle.x - speed * delta };
+          const contactLeft = moved.x + moved.width * 0.12;
+          const contactRight = moved.x + moved.width * 0.88;
+          const feetOverObstacle = contactLeft < FOOT_RIGHT && contactRight > FOOT_LEFT;
+          const requiredClearance = moved.kind === 'rock' ? ROCK_FOOT_CLEARANCE : MIN_VISIBLE_FOOT_CLEARANCE;
 
-          if (!moved.settled && feetOverWater) {
+          if (!moved.settled && feetOverObstacle) {
             moved.engaged = true;
-            if (visibleFootClearance < MIN_VISIBLE_FOOT_CLEARANCE) {
+            if (moved.kind === 'wide' && flipActiveRef.current) moved.flipped = true;
+            if (visibleFootClearance < requiredClearance) {
               moved.settled = true;
-              setHearts((value) => { const next = value - 1; if (next <= 0) setPhase('over'); return Math.max(0, next) });
-              setFlash('ouch'); window.setTimeout(() => setFlash(null), 520);
+              takeHit('ouch');
             }
           }
 
-          if (!moved.settled && moved.engaged && wetRight <= FOOT_LEFT) {
+          if (!moved.settled && moved.engaged && contactRight <= FOOT_LEFT) {
             moved.settled = true;
-            clearedScoreRef.current += 100;
-            setScore((value) => value + 100);
-            setFlash('good'); window.setTimeout(() => setFlash(null), 420);
+            if (moved.kind === 'wide' && !moved.flipped) {
+              takeHit('need-flip');
+            } else {
+              clearedScoreRef.current += 100;
+              setScore((value) => value + 100);
+              setFlash('good'); window.setTimeout(() => setFlash(null), 420);
+            }
           }
           if (moved.x > -25) remaining.push(moved);
         }
@@ -227,7 +247,7 @@ export default function Home() {
       <header className="game-header"><div className="brand-mark"><CloudRain size={20} /></div><div><p>PANDA RAIN CLUB</p><h1>水窪跳跳</h1></div></header>
 
       {phase === 'ready' && <div className="ready-screen">
-        <div className="intro"><span>FRAME-BY-FRAME</span><h2>別踩到水窪！</h2><p>輕點跳躍，連點兩下可在空中翻轉得更遠。</p></div>
+        <div className="intro"><span>FRAME-BY-FRAME</span><h2>跳過水窪與石頭！</h2><p>輕點跳躍；遇到標示 ×2 的長水窪，連點兩下翻轉才能過。</p></div>
         <div className="preview-jump">
           <div className="preview-shadow" /><ShowcaseSprite panda={panda} frame={showcaseFrame} className="preview-showcase" />
           <span className="motion motion-one">✦</span><span className="motion motion-two">✦</span>
@@ -239,13 +259,15 @@ export default function Home() {
         <Button className="start-button" onClick={() => startGame()}>開始跳跳 <Footprints size={19} /></Button>
       </div>}
 
-      {phase === 'playing' && <div className={`play-field ${flash ?? ''}`} onPointerDown={(event) => { event.preventDefault(); jump() }} role="button" tabIndex={0} onKeyDown={(event) => { if (!event.repeat && (event.code === 'Space' || event.code === 'Enter')) { event.preventDefault(); jump() } }} aria-label="輕點跳躍，連點兩下空中翻轉">
+      {phase === 'playing' && <div className={`play-field ${flash === 'need-flip' ? 'ouch' : (flash ?? '')}`} style={{ '--road-duration': `${0.65 * BASE_OBSTACLE_SPEED / obstacleSpeed((GAME_SECONDS - time) * 1000)}s` } as React.CSSProperties} onPointerDown={(event) => { event.preventDefault(); jump() }} role="button" tabIndex={0} onKeyDown={(event) => { if (!event.repeat && (event.code === 'Space' || event.code === 'Enter')) { event.preventDefault(); jump() } }} aria-label="輕點跳過石頭與水窪，長水窪連點兩下空中翻轉">
         <div className="hud"><div><span>距離</span><strong>{score}m</strong></div><div className="time"><Timer size={15} /><strong>{time}</strong><span>秒</span></div><div className="hearts" aria-label={`剩下 ${hearts} 顆愛心`}>{Array.from({ length: 3 }).map((_, i) => <Heart key={i} size={16} fill={i < hearts ? 'currentColor' : 'transparent'} />)}</div></div>
-        <div className="frame-badge">{panda.name} · {isFlipping ? `FLIP ${Math.min(8, Math.floor(flipAngle / 45) + 1)}/8` : (jumpFrame >= 5 ? `JUMP ${jumpFrame - 4}/5` : `RUN ${jumpFrame + 1}/5`)}</div>
+        <div className="frame-badge">{panda.name} · 速度 ×{(obstacleSpeed((GAME_SECONDS - time) * 1000) / BASE_OBSTACLE_SPEED).toFixed(1)} · {isFlipping ? `FLIP ${Math.min(8, Math.floor(flipAngle / 45) + 1)}/8` : (jumpFrame >= 5 ? `JUMP ${jumpFrame - 4}/5` : `RUN ${jumpFrame + 1}/5`)}</div>
         {flipPop && <div className="game-pop flip-text">空中翻轉！ 跳更遠</div>}
-        {flash === 'good' && <div className="game-pop">跳過！ +100</div>}{flash === 'ouch' && <div className="game-pop ouch-text">噗通！</div>}
+        {flash === 'good' && <div className="game-pop">跳過！ +100</div>}{flash === 'ouch' && <div className="game-pop ouch-text">碰到了！</div>}{flash === 'need-flip' && <div className="game-pop ouch-text">要連點兩下！</div>}
         <div className="horizon" /><div className="ground-track" />
-        {puddles.map((puddle) => <div key={puddle.id} className="puddle" style={{ left: `${puddle.x}%`, width: `${puddle.width}%` }}><i /><i /></div>)}
+        {obstacles.map((obstacle) => obstacle.kind === 'rock'
+          ? <div key={obstacle.id} className="rock" style={{ left: `${obstacle.x}%`, width: `${obstacle.width}%` }} aria-hidden="true">🪨</div>
+          : <div key={obstacle.id} className={`puddle${obstacle.kind === 'wide' ? ' wide-puddle' : ''}`} style={{ left: `${obstacle.x}%`, width: `${obstacle.width}%` }} aria-hidden="true"><i /><i />{obstacle.kind === 'wide' && <span>×2 連跳</span>}</div>)}
         <div className={`runner${isFlipping ? ' flipping' : ''}${selected === 3 && hasFlipped ? ' stabilized' : ''}`} style={{ transform: `translateY(${-jumpY}px) rotate(${flipAngle}deg)` }}><Sprite panda={panda} frame={jumpFrame} offset={flipOffset} /></div>
         <div className="tap-callout"><span>×2</span> 連點翻轉 · 跳得更遠</div>
       </div>}
