@@ -73,6 +73,7 @@ export default function Home() {
   const [flash, setFlash] = useState<'good' | 'ouch' | 'need-flip' | null>(null);
   const [isHurt, setIsHurt] = useState(false);
   const [isInvulnerable, setIsInvulnerable] = useState(false);
+  const [loadedSheets, setLoadedSheets] = useState<Record<string, boolean>>({});
   const obstaclesRef = useRef<Obstacle[]>([]);
   const nextId = useRef(1);
   const spawnCount = useRef(0);
@@ -98,10 +99,16 @@ export default function Home() {
   useEffect(() => { phaseRef.current = phase }, [phase]);
   useEffect(() => { jumpYRef.current = jumpY }, [jumpY]);
   useEffect(() => {
-    // Keep every character's first-hit expression ready before play begins.
+    // Keep both the runner sheet and first-hit expression ready before play begins.
     for (const character of pandas) {
-      const image = new window.Image();
-      image.src = `/selection-frames/${character.id}/frame-2.png`;
+      const runnerImage = new window.Image();
+      runnerImage.onload = () => setLoadedSheets((loaded) => ({ ...loaded, [character.id]: true }));
+      runnerImage.src = character.sheet;
+      if (runnerImage.complete && runnerImage.naturalWidth > 0) {
+        setLoadedSheets((loaded) => ({ ...loaded, [character.id]: true }));
+      }
+      const hurtImage = new window.Image();
+      hurtImage.src = `/selection-frames/${character.id}/frame-2.png`;
     }
   }, []);
   useEffect(() => () => {
@@ -291,6 +298,7 @@ export default function Home() {
 
   const rank = score >= 1000 ? ['跳過整場大雨！', '★★★'] : score >= 500 ? ['雨靴高手！', '★★☆'] : ['再試一次！', '★☆☆'];
   const flipOffset = selected === 3 && hasFlipped ? (bomiFlipOffsets[jumpFrame] ?? [0, 0]) : [0, 0];
+  const spriteSheetReady = Boolean(loadedSheets[panda.id]);
 
   return <main className="page-shell" style={{ '--panda': panda.color, '--panda-pale': panda.pale } as React.CSSProperties}>
     <section className="phone-stage" aria-label="熊貓水窪跳跳遊戲">
@@ -320,7 +328,8 @@ export default function Home() {
           ? <div key={obstacle.id} className="rock" style={{ left: `${obstacle.x}%`, width: `${obstacle.width}%` }} aria-hidden="true">🪨</div>
           : <div key={obstacle.id} className={`puddle${obstacle.kind === 'wide' ? ' wide-puddle' : ''}`} style={{ left: `${obstacle.x}%`, width: `${obstacle.width}%` }} aria-hidden="true"><i /><i />{obstacle.kind === 'wide' && <span>×2 連跳</span>}</div>)}
         <div className={`runner${isFlipping ? ' flipping' : ''}${selected === 3 && hasFlipped ? ' stabilized' : ''}${isHurt ? ' hurt' : ''}${isInvulnerable ? ' invulnerable' : ''}`} style={{ transform: `translateY(${-jumpY}px) rotate(${flipAngle}deg)` }}>
-          <Sprite panda={panda} frame={jumpFrame} offset={flipOffset} />
+          <ShowcaseSprite panda={panda} frame={0} className={`runner-fallback${spriteSheetReady ? ' is-hidden' : ''}`} />
+          <Sprite panda={panda} frame={jumpFrame} offset={flipOffset} className={spriteSheetReady ? 'is-ready' : 'is-loading'} />
           <ShowcaseSprite panda={panda} frame={1} className="hurt-sprite" />
           {isHurt && <span className="hurt-drop" aria-hidden="true">💧</span>}
         </div>

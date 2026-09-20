@@ -403,6 +403,25 @@ button {
   filter: drop-shadow(0 8px 8px rgb(5 22 48 / 28%));
   transition: transform 55ms linear;
 }
+.runner > .panda-sprite {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+}
+.runner > .panda-sprite.is-ready {
+  opacity: 1;
+}
+.runner .runner-fallback {
+  position: absolute;
+  inset: 0;
+  width: 148px;
+  height: 148px;
+  opacity: 1;
+  filter: drop-shadow(0 9px 10px rgb(0 9 27 / 28%));
+}
+.runner .runner-fallback.is-hidden {
+  opacity: 0;
+}
 .runner .hurt-sprite {
   position: absolute;
   inset: 0;
@@ -411,7 +430,8 @@ button {
   opacity: 0;
   filter: drop-shadow(0 0 12px rgb(255 112 144 / 68%));
 }
-.runner.hurt .panda-sprite {
+.runner.hurt .panda-sprite,
+.runner.hurt .runner-fallback {
   opacity: 0;
 }
 .runner.hurt .hurt-sprite {
