@@ -10,7 +10,7 @@ type WebGameContext = { registerTool: (tool: { name: string; title: string; desc
 
 const pandas: Panda[] = [
   // Per-frame footInsets match each sheet's transparent space below the visible feet at the 148px game size.
-  { id: 'enji', name: 'Enji', color: '#58bff5', pale: '#dff4ff', sheet: '/enji-run-jump-v10.png', footInsets: [0, 0, 0, 0, 0, 7, 6, 8, 7, 7] },
+  { id: 'enji', name: 'Enji', color: '#58bff5', pale: '#dff4ff', sheet: '/enji-run-jump-v11.png', footInsets: [0, 0, 0, 0, 0, 7, 6, 8, 7, 7] },
   { id: 'chorong', name: 'Chorong', color: '#f39ab5', pale: '#ffe5ed', sheet: '/chorong-run-jump-v3.png', footInsets: [2, 3, 0, 6, 0, 10, 11, 15, 9, 10] },
   { id: 'najoo', name: 'Najoo', color: '#ae85d5', pale: '#f1e7fb', sheet: '/najoo-run-jump-v1.png', footInsets: [3, 2, 0, 0, 2, 7, 7, 14, 9, 8] },
   { id: 'bomi', name: 'Bomi', color: '#f4aa38', pale: '#fff0d3', sheet: '/bomi-run-jump-v1.png', footInsets: [3, 2, 0, 11, 3, 7, 7, 14, 12, 5] },
