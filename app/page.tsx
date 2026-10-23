@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { CloudRain, Footprints, Heart, Info, LogOut, Medal, Music, RotateCcw, Timer, Trophy, Volume2, VolumeX, X, Youtube } from 'lucide-react';
+import { CloudRain, Footprints, Heart, Info, LogOut, Medal, Music, RotateCcw, Trophy, Volume2, VolumeX, X, Youtube } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { audioManager } from '@/lib/audioManager';
 import { getAssetPath } from '@/lib/assetHelper';
@@ -304,6 +304,13 @@ export default function Home() {
   }, [readLocalLeaderboard]);
 
   useEffect(() => {
+    try {
+      const ua = window.navigator.userAgent || '';
+      const isInApp = /Threads|Instagram|FBAN|FBAV|Line|Twitter|MicroMessenger|musical_ly|BytedanceWebview/i.test(ua);
+      if (isInApp) {
+        document.documentElement.classList.add('in-app-browser');
+      }
+    } catch { /* ignore */ }
     try { setPlayerHandle(window.localStorage.getItem(LEADERBOARD_HANDLE_KEY) ?? '') } catch { /* local storage may be unavailable */ }
     setIsMuted(audioManager.isMuted());
     void syncLeaderboard();
@@ -1147,10 +1154,11 @@ export default function Home() {
           </button>
         </div>
         <div className="hud">
-          <div><span>距離</span><strong>{score}m</strong></div>
-          <div className="time"><Timer size={15} /><strong>{time}</strong><span>秒</span></div>
+          <div className="hud-distance"><span>距離</span><strong>{score}m</strong></div>
           <div className="hearts" aria-label={`剩下 ${hearts} 顆愛心`}>
-            {Array.from({ length: 3 }).map((_, i) => <Heart key={i} size={16} fill={i < hearts ? 'currentColor' : 'transparent'} />)}
+            <div className="hearts-group">
+              {Array.from({ length: 3 }).map((_, i) => <Heart key={i} size={17} fill={i < hearts ? 'currentColor' : 'transparent'} />)}
+            </div>
             <div className="hud-buffs">
               {hasShield && <span className="buff-badge buff-shield">☂️ 護盾</span>}
               {isRainbow && <span className="buff-badge buff-rainbow">🌈 狂飆</span>}

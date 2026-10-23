@@ -20,7 +20,18 @@
   --border: rgb(255 255 255 / 16%);
   --ring: #7bd3ff;
   --radius: 1rem;
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
 }
+
+/* In in-app browsers like Threads, Instagram, and Facebook, the native app header
+   already clears the device notch/status bar. Inside the webview, the top safe area
+   must be 0px to prevent the entire UI from shifting down. */
+html.in-app-browser,
+.in-app-browser {
+  --safe-top: 0px !important;
+}
+
 * {
   box-sizing: border-box;
 }
@@ -61,6 +72,42 @@ button {
   background: linear-gradient(#193f6c 0%, #0e315b 58%, #071e3d);
   box-shadow: 0 30px 90px rgb(0 0 0 / 45%);
   transition: background 1.4s ease-in-out;
+}
+
+/* On mobile devices / in-app browsers, pin stage cleanly to top and avoid min-height overflow */
+@media (max-width: 600px) {
+  html,
+  body {
+    height: 100%;
+    height: 100dvh;
+    overflow: hidden;
+  }
+  .page-shell {
+    height: 100%;
+    height: 100dvh;
+    min-height: 100%;
+    min-height: 100dvh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    overflow: hidden;
+  }
+  .phone-stage {
+    width: 100%;
+    max-width: 100%;
+    height: 100%;
+    height: 100dvh;
+    min-height: 0;
+    max-height: 100%;
+    max-height: 100dvh;
+    border-radius: 0;
+    box-shadow: none;
+  }
+  :root {
+    --safe-top: clamp(0px, env(safe-area-inset-top, 0px), 36px);
+    --safe-bottom: clamp(0px, env(safe-area-inset-bottom, 0px), 24px);
+  }
 }
 
 /* ================= Weather Themes ================= */
@@ -166,7 +213,7 @@ button {
   display: flex;
   align-items: center;
   gap: 11px;
-  padding: calc(env(safe-area-inset-top) + 18px) 21px 12px;
+  padding: calc(var(--safe-top) + 12px) 18px 10px;
 }
 .brand-mark {
   position: relative;
@@ -254,11 +301,11 @@ button.brand-mark-btn:active {
 .ready-screen,
 .result-screen {
   position: absolute;
-  inset: 79px 0 0;
+  inset: calc(var(--safe-top) + 68px) 0 0;
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 18px 20px calc(env(safe-area-inset-bottom) + 30px);
+  padding: 14px 18px calc(var(--safe-bottom) + 24px);
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
 }
@@ -425,8 +472,8 @@ button.brand-mark-btn:active {
 .play-top-actions {
   position: absolute;
   z-index: 45;
-  top: calc(env(safe-area-inset-top) + 20px);
-  right: 17px;
+  top: calc(var(--safe-top) + 12px);
+  right: 15px;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -615,19 +662,19 @@ button.brand-mark-btn:active {
 .hud {
   position: absolute;
   z-index: 25;
-  top: calc(env(safe-area-inset-top) + 78px);
-  left: 15px;
-  right: 15px;
-  display: grid;
-  grid-template-columns: 1fr auto 1fr;
+  top: calc(var(--safe-top) + 56px);
+  left: 14px;
+  right: 14px;
+  display: flex;
   align-items: center;
-  gap: 7px;
+  gap: 8px;
 }
-.hud > div {
+.hud-distance {
+  flex-shrink: 0;
   min-height: 44px;
   display: flex;
   align-items: center;
-  padding: 8px 11px;
+  padding: 8px 14px;
   border: 1px solid rgb(255 255 255 / 15%);
   border-radius: 14px;
   background: rgb(3 24 50 / 70%);
@@ -641,22 +688,28 @@ button.brand-mark-btn:active {
   margin-left: 7px;
   font-size: 17px;
 }
-.hud .time {
-  gap: 4px;
-  color: var(--panda);
-}
-.hud .time strong {
-  margin-left: 0;
-}
 .hearts {
-  justify-content: flex-end;
-  gap: 1px;
+  flex: 1;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 14px;
+  border: 1px solid rgb(255 255 255 / 15%);
+  border-radius: 14px;
+  background: rgb(3 24 50 / 70%);
+  backdrop-filter: blur(10px);
   color: #ff91ad;
+}
+.hearts-group {
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
 .frame-badge {
   position: absolute;
   z-index: 24;
-  top: calc(env(safe-area-inset-top) + 134px);
+  top: calc(var(--safe-top) + 110px);
   left: 50%;
   transform: translateX(-50%);
   white-space: nowrap;
@@ -944,7 +997,7 @@ button.brand-mark-btn:active {
   display: flex;
   align-items: center;
   gap: 5px;
-  margin-left: 6px;
+  margin-left: auto;
 }
 .buff-badge {
   display: inline-flex;
@@ -978,8 +1031,8 @@ button.brand-mark-btn:active {
 .weather-badge {
   position: absolute;
   z-index: 24;
-  top: calc(env(safe-area-inset-top) + 134px);
-  right: 15px;
+  top: calc(var(--safe-top) + 110px);
+  right: 14px;
   display: inline-flex;
   align-items: center;
   gap: 5px;
@@ -995,8 +1048,8 @@ button.brand-mark-btn:active {
 .wave-badge-indicator {
   position: absolute;
   z-index: 24;
-  top: calc(env(safe-area-inset-top) + 134px);
-  left: 15px;
+  top: calc(var(--safe-top) + 110px);
+  left: 14px;
   display: inline-flex;
   align-items: center;
   gap: 4px;
@@ -1070,7 +1123,7 @@ button.brand-mark-btn:active {
 .tap-callout {
   position: absolute;
   z-index: 20;
-  bottom: calc(env(safe-area-inset-bottom) + 23px);
+  bottom: calc(var(--safe-bottom) + 20px);
   left: 50%;
   transform: translateX(-50%);
   white-space: nowrap;
@@ -1349,10 +1402,10 @@ button.brand-mark-btn:active {
 .leaderboard-panel {
   position: relative;
   width: 100%;
-  max-height: calc(100% - env(safe-area-inset-top) - 28px);
+  max-height: calc(100% - var(--safe-top) - 24px);
   display: flex;
   flex-direction: column;
-  padding: 24px 17px calc(env(safe-area-inset-bottom) + 18px);
+  padding: 22px 17px calc(var(--safe-bottom) + 16px);
   overflow: hidden;
   border: 1px solid rgb(255 255 255 / 17%);
   border-radius: 28px;
@@ -1601,7 +1654,7 @@ button.brand-mark-btn:active {
 /* ================= Apink Song Quest HUD ================= */
 .song-quest-bar {
   position: absolute;
-  top: calc(env(safe-area-inset-top) + 168px);
+  top: calc(var(--safe-top) + 142px);
   left: 14px;
   right: 14px;
   z-index: 18;
@@ -2105,10 +2158,10 @@ button.brand-mark-btn:active {
 .credits-panel {
   position: relative;
   width: 100%;
-  max-height: calc(100% - env(safe-area-inset-top) - 24px);
+  max-height: calc(100% - var(--safe-top) - 24px);
   display: flex;
   flex-direction: column;
-  padding: 22px 18px calc(env(safe-area-inset-bottom) + 16px);
+  padding: 22px 18px calc(var(--safe-bottom) + 16px);
   overflow: hidden;
   border: 1px solid rgb(255 255 255 / 20%);
   border-radius: 28px;
