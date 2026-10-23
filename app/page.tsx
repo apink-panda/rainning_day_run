@@ -1255,8 +1255,14 @@ export default function Home() {
   }, [startGame]);
 
   const openLeaderboard = useCallback(async (highlightHandle = '') => {
-    const targetHandle = highlightHandle || playerHandle;
     const localEntries = readLocalLeaderboard();
+    const requestedHandle = (highlightHandle || playerHandle).trim();
+    const localEntry = requestedHandle
+      ? localEntries.find((entry) => entry.handle.toLowerCase() === requestedHandle.toLowerCase())
+      : localEntries.length === 1
+        ? localEntries[0]
+        : undefined;
+    const targetHandle = requestedHandle || localEntry?.handle || '';
     setLeaderboardEntries(localEntries);
     setLastSubmittedHandle(targetHandle);
     setLeaderboardStatus(LEADERBOARD_API_URL ? '正在同步雨天排行榜…' : '此裝置排行榜');
@@ -1264,10 +1270,41 @@ export default function Home() {
     if (!LEADERBOARD_API_URL) return;
     setLeaderboardLoading(true);
     try {
-      setLeaderboardEntries(await fetchCloudLeaderboard());
-      setLeaderboardStatus('雲端排行榜');
-    } catch {
-      setLeaderboardStatus('連線失敗，顯示此裝置紀錄');
+      let cloudEntries: LeaderboardEntry[] | null = null;
+      try {
+        cloudEntries = await fetchCloudLeaderboard();
+      } catch {
+        // A pending local score still gets a POST attempt below.
+      }
+
+      const cloudEntry = localEntry && cloudEntries?.find(
+        (entry) => entry.handle.toLowerCase() === localEntry.handle.toLowerCase()
+      );
+      const localScoreNeedsSync = Boolean(
+        localEntry && (!cloudEntries || !cloudEntry || localEntry.score > cloudEntry.score)
+      );
+
+      if (localEntry && localScoreNeedsSync) {
+        setLeaderboardStatus('發現尚未同步的本機成績，正在重新上傳…');
+        try {
+          const syncedEntries = await submitCloudScore({
+            game: 'panda_rain',
+            handle: localEntry.handle,
+            score: localEntry.score,
+            panda: localEntry.panda,
+          });
+          setLeaderboardEntries(syncedEntries);
+          setLeaderboardStatus('本機成績已重新上傳至雲端排行榜');
+        } catch {
+          setLeaderboardEntries(cloudEntries ? normalizeLeaderboard([...cloudEntries, ...localEntries]) : localEntries);
+          setLeaderboardStatus('上次成績仍待同步，下次開啟排行榜會再重試');
+        }
+      } else if (cloudEntries) {
+        setLeaderboardEntries(cloudEntries);
+        setLeaderboardStatus('雲端排行榜');
+      } else {
+        setLeaderboardStatus('連線失敗，顯示此裝置紀錄');
+      }
     } finally {
       setLeaderboardLoading(false);
     }
