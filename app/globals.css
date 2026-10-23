@@ -765,14 +765,15 @@ button.brand-mark-btn:active {
   bottom: 95px;
   width: 148px;
   height: 148px;
-  transform-origin: 50% 55%;
+  transform-origin: 50% 88%;
   will-change: transform;
-  transition: transform 35ms linear;
+}
+.runner.flipping {
+  transform-origin: 50% 52%;
 }
 .runner.flipping .panda-sprite,
 .runner.stabilized .panda-sprite {
   filter: drop-shadow(0 8px 8px rgb(5 22 48 / 28%));
-  transition: transform 55ms linear;
 }
 .runner > .panda-sprite {
   position: absolute;
@@ -877,6 +878,32 @@ button.brand-mark-btn:active {
 @keyframes rainbowGlow {
   from { transform: scale(0.92); opacity: 0.55; }
   to { transform: scale(1.15); opacity: 0.95; }
+}
+
+/* Landing cushion water splash ripple */
+.landing-ripple {
+  position: absolute;
+  z-index: 13;
+  left: calc(9% + 22px);
+  bottom: 88px;
+  width: 104px;
+  height: 20px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.75);
+  background: radial-gradient(ellipse at center, rgba(140, 210, 255, 0.35) 0%, rgba(90, 170, 255, 0.1) 60%, transparent 100%);
+  pointer-events: none;
+  animation: landingRipplePop 280ms cubic-bezier(0.1, 0.8, 0.3, 1) forwards;
+}
+
+@keyframes landingRipplePop {
+  0% {
+    transform: scale(0.3);
+    opacity: 0.95;
+  }
+  100% {
+    transform: scale(1.35);
+    opacity: 0;
+  }
 }
 
 /* ================= Track Pickups ================= */
@@ -1627,6 +1654,9 @@ button.brand-mark-btn:active {
   }
   .runner {
     bottom: 90px;
+  }
+  .landing-ripple {
+    bottom: 83px;
   }
   .ground-track {
     height: 168px;

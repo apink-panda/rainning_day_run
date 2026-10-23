@@ -141,7 +141,7 @@ const FOOT_RIGHT = 31.5;
 const MIN_VISIBLE_FOOT_CLEARANCE = 36;
 const ROCK_FOOT_CLEARANCE = 58;
 const WIDE_FLIP_CLEARANCE = 24;
-const WIDE_LANDING_GRACE_MS = 120;
+const WIDE_LANDING_GRACE_MS = 180;
 const HURT_EXPRESSION_MS = 720;
 const INVULNERABLE_MS = 2400;
 const LEADERBOARD_STORAGE_KEY = 'panda_rain_leaderboard_v1';
@@ -206,6 +206,8 @@ export default function Home() {
   const [isFlipping, setIsFlipping] = useState(false);
   const [hasFlipped, setHasFlipped] = useState(false);
   const [flipPop, setFlipPop] = useState(false);
+  const [runnerScale, setRunnerScale] = useState({ x: 1, y: 1 });
+  const [landingRipple, setLandingRipple] = useState(false);
   const [showcaseFrame, setShowcaseFrame] = useState(0);
   const [flash, setFlash] = useState<'good' | 'ouch' | 'need-flip' | null>(null);
   const [isHurt, setIsHurt] = useState(false);
@@ -250,6 +252,10 @@ export default function Home() {
   const jumpStart = useRef<number | null>(null);
   const flipStart = useRef<number | null>(null);
   const flipActiveRef = useRef(false);
+  const flipDurationRef = useRef(640);
+  const landingStartRef = useRef<number | null>(null);
+  const landingDurationRef = useRef(135);
+  const isLandingFromFlipRef = useRef(false);
   const lastFlipLandingAt = useRef(0);
   const lastLandingAt = useRef(0);
   const invulnerableUntil = useRef(0);
@@ -368,6 +374,7 @@ export default function Home() {
     obstaclesRef.current = [];
     pickupsRef.current = [];
     setHearts(3); setObstacles([]); setPickups([]); setJumpY(0); setJumpFrame(0); setFlipAngle(0);
+    setRunnerScale({ x: 1, y: 1 }); setLandingRipple(false);
     setIsFlipping(false); setHasFlipped(false); setFlipPop(false); setFlash(null);
     setIsHurt(false); setIsInvulnerable(false);
     setHasShield(false); hasShieldRef.current = false;
@@ -383,7 +390,7 @@ export default function Home() {
     if (itemToastTimer.current !== null) window.clearTimeout(itemToastTimer.current);
     hurtTimer.current = null; invulnerableTimer.current = null; gameOverTimer.current = null; itemToastTimer.current = null;
     invulnerableUntil.current = 0; hurtUntil.current = 0; gameOverAt.current = 0; heartsRef.current = 3;
-    jumpStart.current = null; flipStart.current = null; flipActiveRef.current = false; lastFlipLandingAt.current = 0; lastLandingAt.current = 0;
+    jumpStart.current = null; flipStart.current = null; flipActiveRef.current = false; landingStartRef.current = null; lastFlipLandingAt.current = 0; lastLandingAt.current = 0;
     jumpFrameRef.current = 0; clearedScoreRef.current = 0; spawnCount.current = 0; distanceAccRef.current = 0;
     pausedAt.current = null;
     const round = pickRoundWithLuckySong(5);
@@ -434,6 +441,7 @@ export default function Home() {
     gameStart.current += pausedDuration;
     if (jumpStart.current !== null) jumpStart.current += pausedDuration;
     if (flipStart.current !== null) flipStart.current += pausedDuration;
+    if (landingStartRef.current !== null) landingStartRef.current += pausedDuration;
     if (lastFlipLandingAt.current > 0) lastFlipLandingAt.current += pausedDuration;
     if (lastLandingAt.current > 0) lastLandingAt.current += pausedDuration;
     if (nextSpawnAtRef.current > 0) nextSpawnAtRef.current += pausedDuration;
@@ -466,6 +474,7 @@ export default function Home() {
     obstaclesRef.current = [];
     pickupsRef.current = [];
     setObstacles([]); setPickups([]); setJumpY(0); setJumpFrame(0); setFlipAngle(0);
+    setRunnerScale({ x: 1, y: 1 }); setLandingRipple(false);
     setIsFlipping(false); setHasFlipped(false); setFlipPop(false); setFlash(null);
     setIsHurt(false); setIsInvulnerable(false);
     setHasShield(false); hasShieldRef.current = false;
@@ -477,7 +486,7 @@ export default function Home() {
     if (itemToastTimer.current !== null) window.clearTimeout(itemToastTimer.current);
     hurtTimer.current = null; invulnerableTimer.current = null; gameOverTimer.current = null; itemToastTimer.current = null;
     hurtUntil.current = 0; invulnerableUntil.current = 0; gameOverAt.current = 0;
-    jumpStart.current = null; flipStart.current = null; flipActiveRef.current = false;
+    jumpStart.current = null; flipStart.current = null; flipActiveRef.current = false; landingStartRef.current = null;
     phaseRef.current = 'ready';
     setPhase('ready');
   }, []);
@@ -489,6 +498,7 @@ export default function Home() {
       jumpStart.current = now;
       jumpFrameRef.current = 5;
       setJumpFrame(5);
+      landingStartRef.current = null;
       audioManager.playJump();
       return;
     }
@@ -496,9 +506,16 @@ export default function Home() {
     const elapsed = now - jumpStart.current;
     if (flipActiveRef.current || elapsed > DOUBLE_TAP_WINDOW) return;
     const currentProgress = Math.min(1, elapsed / baseDuration);
-    jumpStart.current = now - currentProgress * (baseDuration + FLIP_AIRTIME_BONUS);
-    flipStart.current = now; flipActiveRef.current = true;
-    setIsFlipping(true); setHasFlipped(true); setFlipPop(true);
+    const totalDuration = baseDuration + FLIP_AIRTIME_BONUS;
+    jumpStart.current = now - currentProgress * totalDuration;
+    flipStart.current = now;
+    flipActiveRef.current = true;
+    const remainingAirtime = totalDuration * (1 - currentProgress);
+    flipDurationRef.current = Math.max(520, Math.min(760, remainingAirtime * 0.76));
+    landingStartRef.current = null;
+    setIsFlipping(true);
+    setHasFlipped(true);
+    setFlipPop(true);
     audioManager.playFlip();
     window.setTimeout(() => setFlipPop(false), 520);
   }, []);
@@ -681,40 +698,115 @@ export default function Home() {
         }
       }
 
-      // Runner jump and flip physics
+      // Runner jump, flip, and natural landing cushion physics
       if (jumpStart.current !== null) {
         const baseDuration = 940;
         const duration = baseDuration + (flipActiveRef.current ? FLIP_AIRTIME_BONUS : 0);
         const progress = Math.min(1, (now - jumpStart.current) / duration);
         let nextJumpFrame: number;
-        if (flipStart.current !== null) {
-          const flipProgress = Math.min(1, (now - flipStart.current) / FLIP_ANIMATION_MS);
+
+        if (flipActiveRef.current && flipStart.current !== null) {
+          const flipElapsed = now - flipStart.current;
+          const flipDur = flipDurationRef.current || 640;
+          const flipProgress = Math.min(1, flipElapsed / flipDur);
           const activeFlipFrames = selectedRef.current === 3 ? bomiFlipFrames : flipFrames;
           const flipIndex = Math.min(activeFlipFrames.length - 1, Math.floor(flipProgress * activeFlipFrames.length));
           nextJumpFrame = activeFlipFrames[flipIndex];
           setFlipAngle(selectedRef.current === 3 ? flipProgress * 360 : flipAngles[flipIndex]);
+
           if (flipProgress >= 1) {
-            flipStart.current = null; setFlipAngle(0); setIsFlipping(false);
+            // Flip 360 rotation gracefully completed in mid-air
+            flipStart.current = null;
+            setFlipAngle(0);
+            setIsFlipping(false);
           }
+        } else if (flipActiveRef.current) {
+          // Flip rotation completed: character extends feet downward preparing for landing (Frame 8)
+          nextJumpFrame = 8;
+          setFlipAngle(0);
         } else {
+          // Normal single jump progression
           const frameIndex = Math.min(jumpFrames.length - 1, Math.floor(progress * jumpFrames.length));
           nextJumpFrame = jumpFrames[frameIndex];
         }
-        jumpFrameRef.current = nextJumpFrame; setJumpFrame(nextJumpFrame);
-        const height = Math.sin(progress * Math.PI) * (flipActiveRef.current ? 178 : 162);
-        setJumpY(height); jumpYRef.current = height;
+
+        jumpFrameRef.current = nextJumpFrame;
+        setJumpFrame(nextJumpFrame);
+
+        // Height curve: athletic launch decelerating into apex, followed by smooth gravitational descent
+        let height: number;
+        if (progress <= 0.5) {
+          height = Math.sin(progress * Math.PI) * (flipActiveRef.current ? 178 : 162);
+        } else {
+          const descentT = (progress - 0.5) / 0.5;
+          const descentCurve = Math.max(0, 1 - Math.pow(descentT, 1.82));
+          height = (flipActiveRef.current ? 178 : 162) * descentCurve;
+        }
+        setJumpY(height);
+        jumpYRef.current = height;
+
         if (progress >= 1) {
-          const nextRunFrame = Math.floor(now / 105) % 5;
-          if (flipActiveRef.current) lastFlipLandingAt.current = now;
+          // Touchdown! Transition into natural landing cushion
+          const wasFlip = flipActiveRef.current;
+          if (wasFlip) lastFlipLandingAt.current = now;
           lastLandingAt.current = now;
-          jumpStart.current = null; setJumpY(0); jumpYRef.current = 0;
-          flipStart.current = null; flipActiveRef.current = false;
-          setFlipAngle(0); setIsFlipping(false); setHasFlipped(false);
-          jumpFrameRef.current = nextRunFrame; setJumpFrame(nextRunFrame);
+          landingStartRef.current = now;
+          landingDurationRef.current = wasFlip ? 135 : 90;
+          isLandingFromFlipRef.current = wasFlip;
+
+          jumpStart.current = null;
+          setJumpY(0);
+          jumpYRef.current = 0;
+          flipStart.current = null;
+          flipActiveRef.current = false;
+          setFlipAngle(0);
+          setIsFlipping(false);
+          setHasFlipped(false);
+
+          // Touchdown cushion frame (Frame 9: bent knees impact absorption)
+          jumpFrameRef.current = 9;
+          setJumpFrame(9);
+          setLandingRipple(true);
+          window.setTimeout(() => setLandingRipple(false), 280);
+        }
+      } else if (landingStartRef.current !== null) {
+        // Natural landing cushion phase (absorbing ground impact)
+        const landingElapsed = now - landingStartRef.current;
+        const landingDur = landingDurationRef.current;
+        const t = landingElapsed / landingDur;
+
+        if (t < 0.55) {
+          // Phase 1: Knee bend (Frame 9) + impact squash & slight 3px ground dip
+          const intensity = isLandingFromFlipRef.current ? 0.08 : 0.04;
+          const wave = Math.sin((t / 0.55) * Math.PI);
+          jumpFrameRef.current = 9;
+          setJumpFrame(9);
+          const dipY = -wave * (isLandingFromFlipRef.current ? 3 : 1.5);
+          setJumpY(dipY);
+          jumpYRef.current = dipY;
+          setRunnerScale({ x: 1 + intensity * wave, y: 1 - intensity * wave });
+        } else if (t < 1.0) {
+          // Phase 2: Unfurling into first running stride (Frame 0) + spring back
+          jumpFrameRef.current = 0;
+          setJumpFrame(0);
+          setJumpY(0);
+          jumpYRef.current = 0;
+          setRunnerScale({ x: 1, y: 1 });
+        } else {
+          // Landing cushion complete: resume regular running loop
+          landingStartRef.current = null;
+          setJumpY(0);
+          jumpYRef.current = 0;
+          setRunnerScale({ x: 1, y: 1 });
+          const nextRunFrame = Math.floor(now / 105) % 5;
+          jumpFrameRef.current = nextRunFrame;
+          setJumpFrame(nextRunFrame);
         }
       } else {
         const nextRunFrame = Math.floor(now / 105) % 5;
-        jumpFrameRef.current = nextRunFrame; setJumpFrame(nextRunFrame);
+        jumpFrameRef.current = nextRunFrame;
+        setJumpFrame(nextRunFrame);
+        setRunnerScale({ x: 1, y: 1 });
       }
 
       // Pickup items movement & collision detection
@@ -1166,7 +1258,7 @@ export default function Home() {
           </div>
         </div>
         <div className="wave-badge-indicator">{getWaveIcon(currentWave)} Wave {currentWave}</div>
-        <div className="frame-badge">{panda.name} · 速度 ×{(currentSpeed / BASE_OBSTACLE_SPEED).toFixed(1)} · {isInvulnerable ? '無敵中' : isRainbow ? '狂暴衝刺' : isFlipping ? `FLIP ${Math.min(8, Math.floor(flipAngle / 45) + 1)}/8` : (jumpFrame >= 5 ? `JUMP ${jumpFrame - 4}/5` : `RUN ${jumpFrame + 1}/5`)}</div>
+        <div className="frame-badge">速度 ×{(currentSpeed / BASE_OBSTACLE_SPEED).toFixed(1)} · {isInvulnerable ? '無敵中' : isRainbow ? '狂暴衝刺' : isFlipping ? `FLIP ${Math.min(8, Math.floor(flipAngle / 45) + 1)}/8` : (jumpFrame >= 5 ? `JUMP ${jumpFrame - 4}/5` : `RUN ${jumpFrame + 1}/5`)}</div>
         <div className="weather-badge">{weatherLabels[weather].icon} {weatherLabels[weather].name}</div>
         {/* Apink Song Quest Bar */}
         {(roundSongs.length > 0 || luckySong) && (
@@ -1267,13 +1359,14 @@ export default function Home() {
             </div>
           </div>
         ))}
-        <div className={`runner${isFlipping ? ' flipping' : ''}${selected === 3 && hasFlipped ? ' stabilized' : ''}${isHurt ? ' hurt' : ''}${isInvulnerable ? ' invulnerable' : ''}${isRainbow ? ' rainbow-mode' : ''}`} style={{ transform: `translateY(${-jumpY}px) rotate(${flipAngle}deg)` }}>
+        <div className={`runner${isFlipping ? ' flipping' : ''}${selected === 3 && hasFlipped ? ' stabilized' : ''}${isHurt ? ' hurt' : ''}${isInvulnerable ? ' invulnerable' : ''}${isRainbow ? ' rainbow-mode' : ''}`} style={{ transform: `translateY(${-jumpY}px) rotate(${flipAngle}deg) scale(${runnerScale.x}, ${runnerScale.y})` }}>
           {hasShield && <div className="runner-umbrella-shield"><span className="shield-icon">☂️</span><div className="shield-aura" /></div>}
           <ShowcaseSprite panda={panda} frame={0} className={`runner-fallback${spriteSheetReady ? ' is-hidden' : ''}`} />
           <Sprite panda={panda} frame={jumpFrame} offset={flipOffset} className={spriteSheetReady ? 'is-ready' : 'is-loading'} />
           <ShowcaseSprite panda={panda} frame={1} className="hurt-sprite" />
           {isHurt && <span className="hurt-drop" aria-hidden="true">💧</span>}
         </div>
+        {landingRipple && <div className="landing-ripple" aria-hidden="true" />}
         <div className="tap-callout"><span>×2</span> 連點翻轉 · 路上撿拾道具與歌曲字母</div>
       </div>}
 
