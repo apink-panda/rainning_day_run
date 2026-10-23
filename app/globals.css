@@ -266,8 +266,46 @@ button.brand-mark-btn:active {
   font-weight: 900;
   letter-spacing: 0.06em;
 }
-.audio-toggle-button {
+.header-actions {
   margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.lang-toggle-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 40px;
+  padding: 0 11px;
+  border: 1px solid rgb(255 255 255 / 18%);
+  border-radius: 13px;
+  color: #e2f0fc;
+  background: rgb(2 20 44 / 58%);
+  backdrop-filter: blur(10px);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 750;
+  transition: transform 0.16s ease, background 0.16s ease, border-color 0.16s ease, box-shadow 0.16s ease;
+}
+.lang-toggle-button:hover {
+  background: rgb(4 30 65 / 85%);
+  border-color: rgb(255 255 255 / 38%);
+  transform: scale(1.05);
+  box-shadow: 0 4px 14px rgb(0 15 35 / 40%);
+}
+.lang-toggle-button:active {
+  transform: scale(0.94);
+}
+.lang-icon {
+  font-size: 13.5px;
+  line-height: 1;
+}
+.lang-text {
+  font-size: 12.5px;
+  letter-spacing: 0.04em;
+}
+.audio-toggle-button {
   display: grid;
   place-items: center;
   width: 40px;

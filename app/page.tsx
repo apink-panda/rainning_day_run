@@ -12,6 +12,7 @@ import {
   getSongBonusPercent,
   getYoutubeThumbnail,
 } from './data/apinkTracks';
+import { Language, detectUserLanguage, translations } from './i18n';
 
 type Panda = { id: string; name: string; color: string; pale: string; sheet: string; footInsets: readonly number[] };
 type Obstacle = { id: number; kind: 'puddle' | 'rock' | 'wide'; x: number; width: number; settled: boolean; engaged: boolean; flipped: boolean };
@@ -48,7 +49,7 @@ function getWaveIcon(waveId: number): string {
   return icons[(Math.max(1, waveId) - 1) % icons.length];
 }
 
-function getWave(elapsedMs: number): Wave {
+function getWave(elapsedMs: number, lang: Language = 'zh'): Wave {
   const s = elapsedMs / 1000;
   let waveId = 1;
   if (s < 16) {
@@ -72,8 +73,14 @@ function getWave(elapsedMs: number): Wave {
     waveId = 9 + Math.floor((s - 184) / 28);
   }
 
+  const t = translations[lang];
+
   if (waveId <= BASE_WAVES.length) {
-    return BASE_WAVES[waveId - 1];
+    const base = BASE_WAVES[waveId - 1];
+    return {
+      ...base,
+      subtitle: (t.waveSubtitles[waveId as keyof typeof t.waveSubtitles] as string) || base.subtitle,
+    };
   }
 
   // Infinite wave progression beyond Wave 8:
@@ -88,7 +95,7 @@ function getWave(elapsedMs: number): Wave {
     speedMultiplier,
     spawnInterval,
     title: `LEVEL UP! WAVE ${waveId}`,
-    subtitle: `速度加乘 ×${speedMultiplier.toFixed(2)} · 巔峰挑戰`,
+    subtitle: t.waveSubtitles.infiniteSubtitle(speedMultiplier.toFixed(2)),
     icon,
   };
 }
@@ -309,7 +316,46 @@ export default function Home() {
     }
   }, [readLocalLeaderboard]);
 
+  const [language, setLanguage] = useState<Language>('zh');
+  const languageRef = useRef<Language>('zh');
+  languageRef.current = language;
+
+  const toggleLanguage = useCallback(() => {
+    setLanguage((prev) => {
+      const next: Language = prev === 'ko' ? 'zh' : 'ko';
+      languageRef.current = next;
+      try {
+        localStorage.setItem('panda_language', next);
+      } catch {}
+      return next;
+    });
+  }, []);
+
+  const t = translations[language];
+
   useEffect(() => {
+    const detected = detectUserLanguage();
+    setLanguage(detected);
+    languageRef.current = detected;
+
+    try {
+      const saved = localStorage.getItem('panda_language');
+      if (!saved) {
+        const controller = new AbortController();
+        const timer = window.setTimeout(() => controller.abort(), 1400);
+        fetch('https://api.country.is', { signal: controller.signal })
+          .then((res) => res.json())
+          .then((data) => {
+            window.clearTimeout(timer);
+            if (data?.country === 'KR') {
+              setLanguage('ko');
+              languageRef.current = 'ko';
+            }
+          })
+          .catch(() => {});
+      }
+    } catch { /* ignore */ }
+
     try {
       const ua = window.navigator.userAgent || '';
       const isInApp = /Threads|Instagram|FBAN|FBAV|Line|Twitter|MicroMessenger|musical_ly|BytedanceWebview/i.test(ua);
@@ -566,7 +612,7 @@ export default function Home() {
       }
 
       // Wave stage progression
-      const nextWave = getWave(elapsed);
+      const nextWave = getWave(elapsed, languageRef.current);
       if (nextWave.id !== lastWaveRef.current) {
         lastWaveRef.current = nextWave.id;
         setCurrentWave(nextWave.id);
@@ -824,25 +870,40 @@ export default function Home() {
               if (moved.kind === 'shield') {
                 hasShieldRef.current = true;
                 setHasShield(true);
-                triggerItemToast('☂️ 雨傘護盾！抵擋 1 次傷害', '#74f0b2');
+                triggerItemToast(
+                  languageRef.current === 'ko' ? '☂️ 우산 방패! 피해 1회 방어' : '☂️ 雨傘護盾！抵擋 1 次傷害',
+                  '#74f0b2'
+                );
               } else if (moved.kind === 'heal') {
                 if (heartsRef.current < 3) {
                   heartsRef.current += 1;
                   setHearts(heartsRef.current);
-                  triggerItemToast('💖 體力補充！愛心 +1', '#ff8db6');
+                  triggerItemToast(
+                    languageRef.current === 'ko' ? '💖 체력 회복! 하트 +1' : '💖 體力補充！愛心 +1',
+                    '#ff8db6'
+                  );
                 } else {
                   clearedScoreRef.current += 200;
                   setScore((v) => v + 200);
-                  triggerItemToast('💖 滿血激勵！+200m', '#ffb3cf');
+                  triggerItemToast(
+                    languageRef.current === 'ko' ? '💖 풀피 보너스! +200m' : '💖 滿血激勵！+200m',
+                    '#ffb3cf'
+                  );
                 }
               } else if (moved.kind === 'rainbow') {
                 rainbowUntilRef.current = now + 4200;
                 setIsRainbow(true);
-                triggerItemToast('🌈 彩虹狂飆！無敵衝刺', '#ffd666');
+                triggerItemToast(
+                  languageRef.current === 'ko' ? '🌈 무지개 대시! 무적 질주' : '🌈 彩虹狂飆！無敵衝刺',
+                  '#ffd666'
+                );
               } else if (moved.kind === 'star') {
                 clearedScoreRef.current += 30;
                 setScore((v) => v + 30);
-                triggerItemToast('✦ 雨滴星鑽 +30m', '#7fe8ff');
+                triggerItemToast(
+                  languageRef.current === 'ko' ? '✦ 빗방울 별 +30m' : '✦ 雨滴星鑽 +30m',
+                  '#7fe8ff'
+                );
               }
             }
           }
@@ -894,7 +955,15 @@ export default function Home() {
 
                   const songCount = newCompleted.length;
                   const bonusPct = getSongBonusPercent(songCount, isLuckyCompletedRef.current);
-                  triggerItemToast(`🎵 完成第 ${songCount} 首 Apink《${currentTargetSong.title}》！加成 +${bonusPct}%`, '#ff8db6');
+                  const songTitleDisplay = languageRef.current === 'ko'
+                    ? (currentTargetSong.koreanTitle || currentTargetSong.title)
+                    : currentTargetSong.title;
+                  triggerItemToast(
+                    languageRef.current === 'ko'
+                      ? `🎵 제 ${songCount}곡 에이핑크 《${songTitleDisplay}》 완성! 보너스 +${bonusPct}%`
+                      : `🎵 完成第 ${songCount} 首 Apink《${currentTargetSong.title}》！加成 +${bonusPct}%`,
+                    '#ff8db6'
+                  );
 
                   const nextSongIdx = activeSongIndexRef.current + 1;
                   activeSongIndexRef.current = nextSongIdx;
@@ -903,7 +972,12 @@ export default function Home() {
                   setCollectedLetterCount(0);
                   nextLetterAtRef.current = now + 1200;
                 } else {
-                  triggerItemToast(`🔤 收集單字 [${moved.char}]！(${nextCount}/${currentTargetSong.collectLetters.length}) +50m`, '#ffb3cf');
+                  triggerItemToast(
+                    languageRef.current === 'ko'
+                      ? `🔤 알파벳 [${moved.char}] 수집! (${nextCount}/${currentTargetSong.collectLetters.length}) +50m`
+                      : `🔤 收集單字 [${moved.char}]！(${nextCount}/${currentTargetSong.collectLetters.length}) +50m`,
+                    '#ffb3cf'
+                  );
                 }
               }
 
@@ -934,13 +1008,24 @@ export default function Home() {
                     setIsLuckyCompleted(true);
                     clearedScoreRef.current += 300;
                     setScore((v) => v + 300);
-                    triggerItemToast(`🌟 幸運歌曲《${lucky.title}》全數命中！解鎖加成 +100%！`, '#ffd700');
+                    const luckyDisplay = languageRef.current === 'ko' ? (lucky.koreanTitle || lucky.title) : lucky.title;
+                    triggerItemToast(
+                      languageRef.current === 'ko'
+                        ? `🌟 행운의 곡 《${luckyDisplay}》 완성! 보너스 +100% 해금!`
+                        : `🌟 幸運歌曲《${lucky.title}》全數命中！解鎖加成 +100%！`,
+                      '#ffd700'
+                    );
                   } else {
                     clearedScoreRef.current += 80;
                     setScore((v) => v + 80);
                     const revealedCount = nextRevealed.filter(Boolean).length;
                     if (!hitStandard) {
-                      triggerItemToast(`✨ 幸運歌曲命中 [${moved.char}]！(${revealedCount}/${nextRevealed.length}) +80m`, '#ffd700');
+                      triggerItemToast(
+                        languageRef.current === 'ko'
+                          ? `✨ 행운의 알파벳 [${moved.char}] 적중! (${revealedCount}/${nextRevealed.length}) +80m`
+                          : `✨ 幸運歌曲命中 [${moved.char}]！(${revealedCount}/${nextRevealed.length}) +80m`,
+                        '#ffd700'
+                      );
                     }
                   }
                 }
@@ -951,7 +1036,12 @@ export default function Home() {
                 audioManager.playPickup('star');
                 clearedScoreRef.current += 30;
                 setScore((v) => v + 30);
-                triggerItemToast(`✦ 拾獲單字 [${moved.char}] +30m`, '#7fe8ff');
+                triggerItemToast(
+                  languageRef.current === 'ko'
+                    ? `✦ 알파벳 [${moved.char}] 획득 +30m`
+                    : `✦ 拾獲單字 [${moved.char}] +30m`,
+                  '#7fe8ff'
+                );
               }
             }
           }
@@ -1012,14 +1102,20 @@ export default function Home() {
               clearedScoreRef.current += 150;
               setScore((value) => value + 150);
               setFlash('good');
-              triggerItemToast('💥 狂飆撞碎障礙！+150m', '#ffd666');
+              triggerItemToast(
+                languageRef.current === 'ko' ? '💥 장애물 돌파! +150m' : '💥 狂飆撞碎障礙！+150m',
+                '#ffd666'
+              );
             } else if (!waitingForSecondTap && !justLandedFlip && !justLandedNormal && visibleFootClearance < requiredClearance) {
               moved.settled = true;
               if (hasShieldRef.current) {
                 hasShieldRef.current = false;
                 setHasShield(false);
                 setFlash('ouch');
-                triggerItemToast('☂️ 雨傘護盾抵擋傷害！', '#7ee8ff');
+                triggerItemToast(
+                  languageRef.current === 'ko' ? '☂️ 우산 방패로 피해 방어!' : '☂️ 雨傘護盾抵擋傷害！',
+                  '#7ee8ff'
+                );
                 invulnerableUntil.current = now + 1200;
                 setIsInvulnerable(true);
                 if (invulnerableTimer.current !== null) window.clearTimeout(invulnerableTimer.current);
@@ -1037,7 +1133,10 @@ export default function Home() {
                 hasShieldRef.current = false;
                 setHasShield(false);
                 setFlash('ouch');
-                triggerItemToast('☂️ 雨傘護盾抵擋傷害！', '#7ee8ff');
+                triggerItemToast(
+                  languageRef.current === 'ko' ? '☂️ 우산 방패로 피해 방어!' : '☂️ 雨傘護盾抵擋傷害！',
+                  '#7ee8ff'
+                );
                 invulnerableUntil.current = now + 1200;
                 setIsInvulnerable(true);
                 if (invulnerableTimer.current !== null) window.clearTimeout(invulnerableTimer.current);
@@ -1182,43 +1281,55 @@ export default function Home() {
             if (phase === 'playing') pauseForExit();
             setCreditsOpen(true);
           }}
-          title="音樂來源、授權與應援聲明"
-          aria-label="音樂來源、授權與應援聲明"
+          title={t.creditsTooltip}
+          aria-label={t.creditsTooltip}
         >
           <CloudRain size={20} />
           <span className="brand-mark-badge" aria-hidden="true">
             <Info size={11} strokeWidth={2.6} />
           </span>
         </button>
-        <div><p>PANDA RAIN CLUB</p><h1>水窪跳跳</h1></div>
-        {phase !== 'playing' && phase !== 'paused' && (
+        <div><p>{t.appSubtitle}</p><h1>{t.appTitle}</h1></div>
+        <div className="header-actions">
           <button
-            className={`audio-toggle-button${isMuted ? ' is-muted' : ''}`}
+            className="lang-toggle-button"
             type="button"
-            onClick={handleToggleAudio}
-            title={isMuted ? '開啟音樂與音效' : '靜音'}
-            aria-label={isMuted ? '開啟音樂與音效' : '靜音'}
+            onClick={toggleLanguage}
+            title={t.langToggleTitle}
+            aria-label={t.langToggleTitle}
           >
-            {isMuted ? <VolumeX size={18} /> : <Volume2 size={18} />}
+            <span className="lang-icon">🌐</span>
+            <span className="lang-text">{t.langLabel}</span>
           </button>
-        )}
+          {phase !== 'playing' && phase !== 'paused' && (
+            <button
+              className={`audio-toggle-button${isMuted ? ' is-muted' : ''}`}
+              type="button"
+              onClick={handleToggleAudio}
+              title={isMuted ? t.audioOn : t.audioOff}
+              aria-label={isMuted ? t.audioOn : t.audioOff}
+            >
+              {isMuted ? <VolumeX size={18} /> : <Volume2 size={18} />}
+            </button>
+          )}
+        </div>
       </header>
 
       {phase === 'ready' && <div className="ready-screen">
-        <div className="intro"><span>NEW · WEATHER & ITEMS</span><h2>跳過水窪、收集雨天道具！</h2><p>輕點跳躍；遇到標示 ×2 的長水窪，連點兩下翻轉。路上可撿拾 ☂️ 護盾、💖 愛心與 🌈 彩虹衝刺！</p></div>
+        <div className="intro"><span>{t.ready.badge}</span><h2>{t.ready.title}</h2><p>{t.ready.desc}</p></div>
         <div className="preview-jump">
           <div className="preview-shadow" /><ShowcaseSprite panda={panda} frame={showcaseFrame} className="preview-showcase" />
           <span className="motion motion-one">✦</span><span className="motion motion-two">✦</span>
         </div>
         <strong className="panda-name">{panda.name}</strong>
-        <div className="picker" aria-label="選擇熊貓">
-          {pandas.map((item, index) => <button key={item.id} className={selected === index ? 'panda-choice active' : 'panda-choice'} style={{ '--choice': item.color } as React.CSSProperties} onClick={() => setSelected(index)} aria-label={`選擇 ${item.name}`} aria-pressed={selected === index}><ShowcaseSprite panda={item} frame={selected === index ? showcaseFrame : 0} className="choice-showcase" /></button>)}
+        <div className="picker" aria-label={t.ready.selectPandaAria}>
+          {pandas.map((item, index) => <button key={item.id} className={selected === index ? 'panda-choice active' : 'panda-choice'} style={{ '--choice': item.color } as React.CSSProperties} onClick={() => setSelected(index)} aria-label={`${t.ready.choosePandaPrefix} ${item.name}`} aria-pressed={selected === index}><ShowcaseSprite panda={item} frame={selected === index ? showcaseFrame : 0} className="choice-showcase" /></button>)}
         </div>
-        <Button className="start-button" onClick={() => startGame()}>開始跳跳 <Footprints size={19} /></Button>
-        <button className="leaderboard-link" type="button" onClick={() => void openLeaderboard()}><Trophy size={16} /> 雨天排行榜</button>
+        <Button className="start-button" onClick={() => startGame()}>{t.ready.startBtn} <Footprints size={19} /></Button>
+        <button className="leaderboard-link" type="button" onClick={() => void openLeaderboard()}><Trophy size={16} /> {t.ready.leaderboardBtn}</button>
       </div>}
 
-      {(phase === 'playing' || phase === 'paused') && <div className={`play-field${phase === 'paused' ? ' paused' : ''} ${flash === 'need-flip' ? 'ouch' : (flash ?? '')}`} style={{ '--road-duration': `${(0.65 * BASE_OBSTACLE_SPEED) / Math.max(0.015, currentSpeed)}s` } as React.CSSProperties} onPointerDown={(event) => { event.preventDefault(); jump() }} role="button" tabIndex={phase === 'playing' ? 0 : -1} onKeyDown={(event) => { if (!event.repeat && (event.code === 'Space' || event.code === 'Enter')) { event.preventDefault(); jump() } }} aria-label="輕點跳過石頭與水窪，長水窪連點兩下空中翻轉">
+      {(phase === 'playing' || phase === 'paused') && <div className={`play-field${phase === 'paused' ? ' paused' : ''} ${flash === 'need-flip' ? 'ouch' : (flash ?? '')}`} style={{ '--road-duration': `${(0.65 * BASE_OBSTACLE_SPEED) / Math.max(0.015, currentSpeed)}s` } as React.CSSProperties} onPointerDown={(event) => { event.preventDefault(); jump() }} role="button" tabIndex={phase === 'playing' ? 0 : -1} onKeyDown={(event) => { if (!event.repeat && (event.code === 'Space' || event.code === 'Enter')) { event.preventDefault(); jump() } }} aria-label={t.play.ariaPlay}>
         <div className="play-top-actions">
           <button
             className={`play-audio-toggle${isMuted ? ' is-muted' : ''}`}
@@ -1228,38 +1339,38 @@ export default function Home() {
               event.stopPropagation();
               handleToggleAudio();
             }}
-            title={isMuted ? '開啟音樂與音效' : '靜音'}
-            aria-label={isMuted ? '開啟音樂與音效' : '靜音'}
+            title={isMuted ? t.audioOn : t.audioOff}
+            aria-label={isMuted ? t.audioOn : t.audioOff}
           >
             {isMuted ? <VolumeX size={17} /> : <Volume2 size={17} />}
-            <span className="audio-label-text">{isMuted ? '靜音' : '聲音'}</span>
+            <span className="audio-label-text">{isMuted ? t.soundBtnLabelOff : t.soundBtnLabelOn}</span>
           </button>
           <button
             className="exit-game-button"
             type="button"
             onPointerDown={(event) => event.stopPropagation()}
             onClick={pauseForExit}
-            aria-label="離開遊戲"
+            aria-label={t.exitBtn}
           >
             <X size={17} />
-            <span>離開</span>
+            <span>{t.exitBtn}</span>
           </button>
         </div>
         <div className="hud">
-          <div className="hud-distance"><span>距離</span><strong>{score}m</strong></div>
-          <div className="hearts" aria-label={`剩下 ${hearts} 顆愛心`}>
+          <div className="hud-distance"><span>{t.distanceLabel}</span><strong>{score}m</strong></div>
+          <div className="hearts" aria-label={language === 'ko' ? `하트 ${hearts}개 남음` : `剩下 ${hearts} 顆愛心`}>
             <div className="hearts-group">
               {Array.from({ length: 3 }).map((_, i) => <Heart key={i} size={17} fill={i < hearts ? 'currentColor' : 'transparent'} />)}
             </div>
             <div className="hud-buffs">
-              {hasShield && <span className="buff-badge buff-shield">☂️ 護盾</span>}
-              {isRainbow && <span className="buff-badge buff-rainbow">🌈 狂飆</span>}
+              {hasShield && <span className="buff-badge buff-shield">☂️ {language === 'ko' ? '방패' : '護盾'}</span>}
+              {isRainbow && <span className="buff-badge buff-rainbow">🌈 {language === 'ko' ? '질주' : '狂飆'}</span>}
             </div>
           </div>
         </div>
         <div className="wave-badge-indicator">{getWaveIcon(currentWave)} Wave {currentWave}</div>
-        <div className="frame-badge">速度 ×{(currentSpeed / BASE_OBSTACLE_SPEED).toFixed(1)} · {isInvulnerable ? '無敵中' : isRainbow ? '狂暴衝刺' : isFlipping ? `FLIP ${Math.min(8, Math.floor(flipAngle / 45) + 1)}/8` : (jumpFrame >= 5 ? `JUMP ${jumpFrame - 4}/5` : `RUN ${jumpFrame + 1}/5`)}</div>
-        <div className="weather-badge">{weatherLabels[weather].icon} {weatherLabels[weather].name}</div>
+        <div className="frame-badge">{t.speedLabel} ×{(currentSpeed / BASE_OBSTACLE_SPEED).toFixed(1)} · {isInvulnerable ? t.invulnerableStatus : isRainbow ? t.rainbowStatus : isFlipping ? `FLIP ${Math.min(8, Math.floor(flipAngle / 45) + 1)}/8` : (jumpFrame >= 5 ? `JUMP ${jumpFrame - 4}/5` : `RUN ${jumpFrame + 1}/5`)}</div>
+        <div className="weather-badge">{t.weather[weather].icon} {t.weather[weather].name}</div>
         {/* Apink Song Quest Bar */}
         {(roundSongs.length > 0 || luckySong) && (
           <div className="song-quest-bar">
@@ -1269,12 +1380,16 @@ export default function Home() {
                 <>
                   <div className="song-quest-meta">
                     <span className="song-quest-disc">💿</span>
-                    <span className="song-quest-title">Apink《{roundSongs[activeSongIndex]?.title}》</span>
-                    {roundSongs[activeSongIndex]?.koreanTitle && (
+                    <span className="song-quest-title">
+                      {language === 'ko'
+                        ? `에이핑크 《${roundSongs[activeSongIndex]?.koreanTitle || roundSongs[activeSongIndex]?.title}》`
+                        : `Apink《${roundSongs[activeSongIndex]?.title}》`}
+                    </span>
+                    {roundSongs[activeSongIndex]?.koreanTitle && language !== 'ko' && (
                       <span className="song-quest-ko">({roundSongs[activeSongIndex].koreanTitle})</span>
                     )}
                     <span className="song-quest-count-badge">
-                      第 {activeSongIndex + 1}/5 首 · 加成 +{getSongBonusPercent(completedSongs.length)}%
+                      {t.songQuest.roundProgress(activeSongIndex + 1, 5, getSongBonusPercent(completedSongs.length))}
                     </span>
                   </div>
                   <div className="song-quest-letters">
@@ -1285,7 +1400,7 @@ export default function Home() {
                         <span
                           key={idx}
                           className={`quest-char-box ${isDone ? 'done' : isNext ? 'next' : ''}`}
-                          title={isDone ? '已收集' : isNext ? '下一個目標' : '未收集'}
+                          title={isDone ? t.songQuest.charDone : isNext ? t.songQuest.charNext : t.songQuest.charPending}
                         >
                           {char}
                         </span>
@@ -1296,7 +1411,7 @@ export default function Home() {
               ) : (
                 <div className="song-quest-meta" style={{ color: '#ffd700', fontWeight: 900 }}>
                   <span>🎉</span>
-                  <span>前 5 首常規歌曲全數收集完成！加成 +50%</span>
+                  <span>{t.songQuest.allStandardDone}</span>
                 </div>
               )}
             </div>
@@ -1311,11 +1426,11 @@ export default function Home() {
                   <span className="lucky-quest-sparkle">✨</span>
                   <span className="lucky-quest-title">
                     {isLuckyCompleted
-                      ? `幸運歌曲《${luckySong.title}》解鎖！`
-                      : `幸運歌曲 (${luckySong.letterCount} 字母)`}
+                      ? t.songQuest.luckySongUnlocked(language === 'ko' ? (luckySong.koreanTitle || luckySong.title) : luckySong.title)
+                      : t.songQuest.luckySongTitle(luckySong.letterCount)}
                   </span>
                   <span className={`lucky-quest-badge ${isLuckyCompleted ? 'completed' : ''}`}>
-                    {isLuckyCompleted ? '幸運達成 +100%' : '幸運加成 +100%'}
+                    {isLuckyCompleted ? t.songQuest.luckyAchieved : t.songQuest.luckyBonus}
                   </span>
                 </div>
                 <div className="song-quest-letters">
@@ -1325,7 +1440,7 @@ export default function Home() {
                       <span
                         key={idx}
                         className={`quest-char-box ${revealed ? 'lucky-done' : 'lucky-hidden'}`}
-                        title={revealed ? `已翻開 [${char}]` : `第 ${idx + 1} 個神秘單字`}
+                        title={revealed ? t.songQuest.luckyRevealed(char) : t.songQuest.luckySecret(idx + 1)}
                       >
                         {revealed ? char : '?'}
                       </span>
@@ -1338,12 +1453,12 @@ export default function Home() {
         )}
         {waveNotice && <div className="wave-notice-banner"><div className="wave-notice-icon">{waveNotice.icon}</div><div className="wave-notice-text"><strong>{waveNotice.title}</strong><span>{waveNotice.subtitle}</span></div></div>}
         {itemToast && <div className="item-toast-pop" style={{ '--toast-color': itemToast.color } as React.CSSProperties}>{itemToast.text}</div>}
-        {flipPop && <div className="game-pop flip-text">空中翻轉！ 跳更遠</div>}
-        {flash === 'good' && <div className="game-pop">跳過！ +100</div>}{flash === 'ouch' && <div className="game-pop ouch-text">碰到了！</div>}{flash === 'need-flip' && <div className="game-pop ouch-text">要連點兩下！</div>}
+        {flipPop && <div className="game-pop flip-text">{t.toasts.flip}</div>}
+        {flash === 'good' && <div className="game-pop">{t.toasts.jumpGood}</div>}{flash === 'ouch' && <div className="game-pop ouch-text">{t.toasts.ouch}</div>}{flash === 'need-flip' && <div className="game-pop ouch-text">{t.toasts.needFlip}</div>}
         <div className="horizon" /><div className="ground-track" />
         {obstacles.map((obstacle) => obstacle.kind === 'rock'
           ? <div key={obstacle.id} className="rock" style={{ left: `${obstacle.x}%`, width: `${obstacle.width}%` }} aria-hidden="true">🪨</div>
-          : <div key={obstacle.id} className={`puddle${obstacle.kind === 'wide' ? ' wide-puddle' : ''}`} style={{ left: `${obstacle.x}%`, width: `${obstacle.width}%` }} aria-hidden="true"><i /><i />{obstacle.kind === 'wide' && <span>×2 連跳</span>}</div>)}
+          : <div key={obstacle.id} className={`puddle${obstacle.kind === 'wide' ? ' wide-puddle' : ''}`} style={{ left: `${obstacle.x}%`, width: `${obstacle.width}%` }} aria-hidden="true"><i /><i />{obstacle.kind === 'wide' && <span>{t.widePuddleTag}</span>}</div>)}
         {pickups.map((item) => <div key={item.id} className={`pickup-item pickup-${item.kind}${item.collected ? ' collected' : ''}`} style={{ left: `${item.x}%`, bottom: `${104 + item.y}px` }} aria-hidden="true"><div className="pickup-core">{item.kind === 'shield' && '☂️'}{item.kind === 'heal' && '💖'}{item.kind === 'rainbow' && '🌈'}{item.kind === 'star' && '✦'}</div><div className="pickup-glow" /></div>)}
         {letterPickups.map((item) => (
           <div
@@ -1367,28 +1482,28 @@ export default function Home() {
           {isHurt && <span className="hurt-drop" aria-hidden="true">💧</span>}
         </div>
         {landingRipple && <div className="landing-ripple" aria-hidden="true" />}
-        <div className="tap-callout"><span>×2</span> 連點翻轉 · 路上撿拾道具與歌曲字母</div>
+        <div className="tap-callout"><span>×2</span> {language === 'ko' ? '더블 탭 회전 · 길에서 아이템과 노래 알파벳 수집' : '連點翻轉 · 路上撿拾道具與歌曲字母'}</div>
       </div>}
 
       {phase === 'paused' && <div className="exit-confirm-backdrop" role="presentation" onKeyDown={(event) => { if (event.key === 'Escape') resumeGame() }}>
         <div className="exit-confirm" role="dialog" aria-modal="true" aria-labelledby="exit-confirm-title" aria-describedby="exit-confirm-description">
           <div className="exit-confirm-icon"><LogOut size={24} /></div>
-          <p>遊戲已暫停</p>
-          <h2 id="exit-confirm-title">要離開這場遊戲嗎？</h2>
-          <span id="exit-confirm-description">目前的距離與時間將不會保留。</span>
+          <p>{t.pause.title}</p>
+          <h2 id="exit-confirm-title">{t.pause.confirmTitle}</h2>
+          <span id="exit-confirm-description">{t.pause.confirmDesc}</span>
           <div className="pause-sound-wrapper">
             <button
               className={`pause-sound-btn${isMuted ? ' is-muted' : ''}`}
               type="button"
               onClick={handleToggleAudio}
-              aria-label={isMuted ? '開啟音樂與音效' : '靜音'}
+              aria-label={isMuted ? t.audioOn : t.audioOff}
             >
               {isMuted ? <VolumeX size={16} /> : <Volume2 size={16} />}
-              <span>{isMuted ? '目前已靜音 · 點擊開啟聲音' : '音樂與音效播放中 · 點擊靜音'}</span>
+              <span>{isMuted ? t.pause.audioMuted : t.pause.audioPlaying}</span>
             </button>
           </div>
-          <Button className="resume-button" onClick={resumeGame} autoFocus>繼續遊戲</Button>
-          <button className="confirm-exit-button" type="button" onClick={leaveGame}>離開遊戲</button>
+          <Button className="resume-button" onClick={resumeGame} autoFocus>{t.pause.resumeBtn}</Button>
+          <button className="confirm-exit-button" type="button" onClick={leaveGame}>{t.pause.leaveBtn}</button>
         </div>
       </div>}
 
@@ -1398,7 +1513,13 @@ export default function Home() {
         const totalBonusPercent = standardBonusPercent + luckyBonusPercent;
         const bonusScore = Math.round(score * (totalBonusPercent / 100));
         const finalScore = score + bonusScore;
-        const currentRank = finalScore >= 2000 ? ['雨天傳奇大師！', '★★★'] : finalScore >= 1000 ? ['跳過整場大雨！', '★★★'] : finalScore >= 500 ? ['雨靴高手！', '★★☆'] : ['再試一次！', '★☆☆'];
+        const currentRank = finalScore >= 2000
+          ? [t.result.ranks.legend, '★★★']
+          : finalScore >= 1000
+          ? [t.result.ranks.storm, '★★★']
+          : finalScore >= 500
+          ? [t.result.ranks.pro, '★★☆']
+          : [t.result.ranks.tryAgain, '★☆☆'];
         const luckyHitCount = luckyRevealed.filter(Boolean).length;
         const allMvTracks = [...roundSongs];
         if (luckySong && !allMvTracks.some((t) => t.title === luckySong.title)) {
@@ -1427,17 +1548,17 @@ export default function Home() {
             <div className="result-art"><Sprite panda={panda} frame={7} /></div>
             <p className="stars">{currentRank[1]}</p>
             <h2>{currentRank[0]}</h2>
-            <p>{panda.name} 雨天挑戰結算</p>
+            <p>{t.result.summaryTitle(panda.name)}</p>
 
             {/* Personal Best Record Recognition Banner */}
             {hasPreviousScore && isNewRecord && (
               <div className="personal-record-banner new-high" role="status">
                 <span className="record-banner-icon">🎉</span>
                 <div className="record-banner-body">
-                  <strong className="record-banner-title">突破個人最高紀錄！</strong>
+                  <strong className="record-banner-title">{t.result.recordNewTitle}</strong>
                   <p className="record-banner-desc">
-                    原紀錄 <strong>{previousBest}m</strong> ➔ 本次新高 <strong className="new-high-score">{finalScore}m</strong>
-                    <span className="record-diff-tag">進步 +{finalScore - previousBest}m</span>
+                    {language === 'ko' ? '이전 기록 ' : '原紀錄 '}<strong>{previousBest}m</strong> ➔ {language === 'ko' ? '이번 신기록 ' : '本次新高 '}<strong className="new-high-score">{finalScore}m</strong>
+                    <span className="record-diff-tag">{language === 'ko' ? `+${finalScore - previousBest}m 상승` : `進步 +${finalScore - previousBest}m`}</span>
                   </p>
                 </div>
               </div>
@@ -1446,9 +1567,9 @@ export default function Home() {
               <div className="personal-record-banner keep-best" role="status">
                 <span className="record-banner-icon">🏆</span>
                 <div className="record-banner-body">
-                  <strong className="record-banner-title">目前個人最佳紀錄：{previousBest}m</strong>
+                  <strong className="record-banner-title">{t.result.recordKeepTitle(previousBest)}</strong>
                   <p className="record-banner-desc">
-                    本次結算 {finalScore}m 未超越 · 排行榜將妥善保留你的 <strong>{previousBest}m</strong> 最高紀錄
+                    {t.result.recordKeepDesc(finalScore, previousBest)}
                   </p>
                 </div>
               </div>
@@ -1457,9 +1578,9 @@ export default function Home() {
               <div className="personal-record-banner tied-best" role="status">
                 <span className="record-banner-icon">✨</span>
                 <div className="record-banner-body">
-                  <strong className="record-banner-title">追平個人最高紀錄！</strong>
+                  <strong className="record-banner-title">{t.result.recordTiedTitle}</strong>
                   <p className="record-banner-desc">
-                    再次達到 <strong>{previousBest}m</strong> · 表現極為穩定！
+                    {t.result.recordTiedDesc(previousBest)}
                   </p>
                 </div>
               </div>
@@ -1468,9 +1589,9 @@ export default function Home() {
               <div className="personal-record-banner first-record" role="status">
                 <span className="record-banner-icon">🌟</span>
                 <div className="record-banner-body">
-                  <strong className="record-banner-title">初次挑戰結算：{finalScore}m</strong>
+                  <strong className="record-banner-title">{t.result.recordFirstTitle(finalScore)}</strong>
                   <p className="record-banner-desc">
-                    立即送出即可將個人最高紀錄登錄在雨天排行榜！
+                    {t.result.recordFirstDesc}
                   </p>
                 </div>
               </div>
@@ -1479,28 +1600,28 @@ export default function Home() {
             {/* Score Breakdown Card */}
             <div className="result-score-card">
               <div className="result-score-row">
-                <span>基礎奔跑距離</span>
+                <span>{t.result.baseDistance}</span>
                 <strong>{score}m</strong>
               </div>
               <div className="result-score-row bonus-row">
-                <span>Apink 歌曲命中 ({completedSongs.length}/5 首)</span>
+                <span>{t.result.songHits(completedSongs.length)}</span>
                 <strong className="bonus-accent">+{standardBonusPercent}%</strong>
               </div>
               {luckySong && (
                 <div className="result-score-row lucky-row">
-                  <span>✨ 幸運歌曲{isLuckyCompleted ? ' (達成)' : ` (${luckyHitCount}/${luckySong.letterCount} 字)`}</span>
+                  <span>{t.result.luckyHit(isLuckyCompleted, luckyHitCount, luckySong.letterCount)}</span>
                   <strong className="lucky-accent">{isLuckyCompleted ? '+100%' : '+0%'}</strong>
                 </div>
               )}
               <div className="result-score-divider" />
               <div className="result-score-row total-row">
-                <span>結算總成績 (+{totalBonusPercent}%)</span>
+                <span>{t.result.finalTotal(totalBonusPercent)}</span>
                 <strong className="result-score-main">{finalScore}m</strong>
               </div>
             </div>
 
             <p style={{ marginTop: '2px', marginBottom: '14px', fontSize: '13px', color: '#9bb8d2' }}>
-              存活時間 <strong>{time}</strong> 秒 · 挑戰至 Wave {currentWave}
+              {t.result.survivalSummary(time, currentWave)}
             </p>
 
             {/* Apink Official MV Preview List */}
@@ -1508,8 +1629,8 @@ export default function Home() {
               <div className="mv-section-header">
                 <span className="mv-section-icon">💿</span>
                 <div>
-                  <h3>本回合 Apink 歌曲 MV（命中 {completedSongs.length + (isLuckyCompleted ? 1 : 0)}/6）</h3>
-                  <p>點選 YouTube 預覽卡片即可直接跳轉觀賞官方 MV</p>
+                  <h3>{t.result.mvHeader(completedSongs.length + (isLuckyCompleted ? 1 : 0))}</h3>
+                  <p>{t.result.mvDesc}</p>
                 </div>
               </div>
               <div className="mv-card-list">
@@ -1519,6 +1640,7 @@ export default function Home() {
                     ? isLuckyCompleted
                     : completedSongs.some((s) => s.title === track.title);
                   const thumbUrl = getYoutubeThumbnail(track.officialMvUrl);
+                  const displayTitle = language === 'ko' ? (track.koreanTitle || track.title) : track.title;
 
                   return (
                     <a
@@ -1527,7 +1649,7 @@ export default function Home() {
                       target="_blank"
                       rel="noopener noreferrer"
                       className={`mv-card ${isLuckyTrack ? 'is-lucky' : ''} ${isHit ? 'is-hit' : 'is-locked'}`}
-                      title={`在 YouTube 觀看 Apink《${track.title}》官方 MV`}
+                      title={language === 'ko' ? `YouTube에서 에이핑크 《${displayTitle}》 공식 MV 보기` : `在 YouTube 觀看 Apink《${track.title}》官方 MV`}
                     >
                       <div className="mv-thumb-wrapper">
                         {thumbUrl ? (
@@ -1545,18 +1667,18 @@ export default function Home() {
                         </div>
                         <span className={`mv-status-badge ${isLuckyTrack ? (isLuckyCompleted ? 'lucky' : 'lucky-blind') : (isHit ? 'hit' : '')}`}>
                           {isLuckyTrack
-                            ? (isLuckyCompleted ? '🌟 幸運歌曲 100%' : `🔮 幸運歌曲 (${luckyHitCount}/${track.letterCount})`)
-                            : (isHit ? '✓ 命中收集' : `第 ${idx + 1} 首`)}
+                            ? (isLuckyCompleted ? t.result.mvLuckyTag : t.result.mvLuckyBlindTag(luckyHitCount, track.letterCount))
+                            : (isHit ? t.result.mvHitTag : t.result.mvTrackIndex(idx + 1))}
                         </span>
                       </div>
                       <div className="mv-card-info">
                         <span className={`mv-card-title ${isLuckyTrack ? 'lucky-tag' : ''}`}>
-                          {isLuckyTrack ? `✨ ${track.title}` : track.title}
+                          {isLuckyTrack ? `✨ ${displayTitle}` : displayTitle}
                         </span>
-                        {track.koreanTitle && <span className="mv-card-ko">{track.koreanTitle}</span>}
+                        {track.koreanTitle && language !== 'ko' && <span className="mv-card-ko">{track.koreanTitle}</span>}
                         <span className="mv-card-meta">{track.year} · {track.album}</span>
                         <span className="mv-link-prompt">
-                          {isHit ? '▶ 點此觀看官方 MV' : '🎧 點此觀看 MV'}
+                          {isHit ? t.result.mvWatchHit : t.result.mvWatchLocked}
                         </span>
                       </div>
                     </a>
@@ -1575,8 +1697,8 @@ export default function Home() {
                   }
                 }}
                 maxLength={28}
-                placeholder="輸入暱稱或 IG 帳號"
-                aria-label="排行榜名稱"
+                placeholder={t.result.inputPlaceholder}
+                aria-label={t.result.inputAria}
               />
               <button
                 type="button"
@@ -1585,23 +1707,23 @@ export default function Home() {
                 disabled={!trimmedHandle || scoreSubmitting || hasSubmittedThisRun}
               >
                 {scoreSubmitting
-                  ? '同步中…'
+                  ? t.result.btnSyncing
                   : hasSubmittedThisRun
                   ? isNewRecordSubmitted
-                    ? '✅ 最高紀錄已更新'
-                    : '✅ 成績已登錄'
+                    ? t.result.btnUpdatedBest
+                    : t.result.btnSubmitted
                   : isNewRecord
-                  ? `🚀 更新成績上去 (${finalScore}m)`
+                  ? t.result.btnUpdateScore(finalScore)
                   : isLowerThanBest
-                  ? `保留最高紀錄 (${previousBest}m)`
-                  : '登上排行榜'}
+                  ? t.result.btnKeepBest(previousBest)
+                  : t.result.btnSubmitNew}
               </button>
             </div>
             <Button className="start-button" onClick={() => startGame()}>
-              <RotateCcw size={18} /> 再跳一次
+              <RotateCcw size={18} /> {t.result.replayBtn}
             </Button>
             <button className="change-panda" onClick={() => { audioManager.stopBgm(); setPhase('ready'); }}>
-              換一隻熊貓
+              {t.result.changePandaBtn}
             </button>
           </div>
         );
@@ -1609,15 +1731,15 @@ export default function Home() {
 
       {leaderboardOpen && <div className="leaderboard-backdrop" role="presentation">
         <section className="leaderboard-panel" role="dialog" aria-modal="true" aria-labelledby="leaderboard-title">
-          <button className="leaderboard-close" type="button" onClick={() => setLeaderboardOpen(false)} aria-label="關閉排行榜"><X size={19} /></button>
+          <button className="leaderboard-close" type="button" onClick={() => setLeaderboardOpen(false)} aria-label={t.leaderboard.closeAria}><X size={19} /></button>
           <div className="leaderboard-heading-icon"><Trophy size={25} /></div>
-          <p>PANDA RAIN CLUB</p>
-          <h2 id="leaderboard-title">雨天跳跳排行榜</h2>
-          <div className="leaderboard-status"><span className={leaderboardLoading ? 'syncing' : ''} />{leaderboardStatus}</div>
-          {myLeaderboardEntry && <div className="leaderboard-mine"><span>我的名次</span><strong>#{myLeaderboardEntry.rank}</strong><span>{myLeaderboardEntry.score}m</span></div>}
+          <p>{t.appSubtitle}</p>
+          <h2 id="leaderboard-title">{t.leaderboard.title}</h2>
+          <div className="leaderboard-status"><span className={leaderboardLoading ? 'syncing' : ''} />{leaderboardStatus === '此裝置排行榜' && language === 'ko' ? '이 기기 랭킹' : leaderboardStatus}</div>
+          {myLeaderboardEntry && <div className="leaderboard-mine"><span>{t.leaderboard.myRank}</span><strong>#{myLeaderboardEntry.rank}</strong><span>{myLeaderboardEntry.score}m</span></div>}
           <div className="leaderboard-list" aria-live="polite">
             {leaderboardEntries.length === 0 && !leaderboardLoading
-              ? <div className="leaderboard-empty"><CloudRain size={28} /><strong>還沒有成績</strong><span>完成第一場雨天挑戰，搶下榜首吧！</span></div>
+              ? <div className="leaderboard-empty"><CloudRain size={28} /><strong>{t.leaderboard.emptyTitle}</strong><span>{t.leaderboard.emptyDesc}</span></div>
               : leaderboardEntries.slice(0, 10).map((entry) => {
                 const entryPanda = pandas.find((item) => item.id === entry.panda) ?? pandas[0];
                 const isMine = Boolean(lastSubmittedHandle) && entry.handle.toLowerCase() === lastSubmittedHandle.toLowerCase();
@@ -1629,7 +1751,7 @@ export default function Home() {
                 </div>;
               })}
           </div>
-          <button className="leaderboard-done" type="button" onClick={() => setLeaderboardOpen(false)}>回到遊戲</button>
+          <button className="leaderboard-done" type="button" onClick={() => setLeaderboardOpen(false)}>{t.leaderboard.backToGame}</button>
         </section>
       </div>}
 
@@ -1641,17 +1763,17 @@ export default function Home() {
           aria-labelledby="credits-title"
           onClick={(e) => e.stopPropagation()}
         >
-          <button className="credits-close" type="button" onClick={() => setCreditsOpen(false)} aria-label="關閉說明">
+          <button className="credits-close" type="button" onClick={() => setCreditsOpen(false)} aria-label={t.credits.closeAria}>
             <X size={19} />
           </button>
           <div className="credits-heading-icon"><CloudRain size={26} /></div>
-          <p className="credits-sub">PANDA RAIN CLUB</p>
-          <h2 id="credits-title">音樂來源與活動聲明</h2>
+          <p className="credits-sub">{t.appSubtitle}</p>
+          <h2 id="credits-title">{t.credits.title}</h2>
 
           <div className="credits-disclaimer-box">
-            <div className="credits-disclaimer-badge">📌 應援聲明</div>
+            <div className="credits-disclaimer-badge">{t.credits.disclaimerBadge}</div>
             <p className="credits-disclaimer-text">
-              本活動為粉絲自製應援小遊戲，不進行任何商業販售，並與官方無關，若有侵犯權益請告知會立即下架關閉。
+              {t.credits.disclaimerText}
             </p>
           </div>
 
@@ -1659,19 +1781,19 @@ export default function Home() {
             <div className="credits-section">
               <div className="credits-section-title">
                 <Music size={15} />
-                <span>🎵 背景音樂 (BGM) 來源與授權</span>
+                <span>{t.credits.bgmSection}</span>
               </div>
               <div className="credits-card">
                 <div className="credits-card-header">
-                  <strong>Empty Mind (雨天 Lo-Fi 輕音樂)</strong>
-                  <span className="credits-tag">Pixabay 免版稅授權</span>
+                  <strong>{t.credits.bgmTitle}</strong>
+                  <span className="credits-tag">{t.credits.bgmLicense}</span>
                 </div>
                 <div className="credits-meta-row">
-                  <span>創作者：<strong>Lofi_hour</strong></span>
-                  <span>來源平台：<strong>Pixabay Music (ID: 118973)</strong></span>
+                  <span>{t.credits.bgmCreator}</span>
+                  <span>{t.credits.bgmPlatform}</span>
                 </div>
                 <p className="credits-desc">
-                  遵循 Pixabay Content License，允許商業與非商業在網站、遊戲中免費公開播放，無須強制署名。
+                  {t.credits.bgmDesc}
                 </p>
               </div>
             </div>
@@ -1679,22 +1801,22 @@ export default function Home() {
             <div className="credits-section">
               <div className="credits-section-title">
                 <Volume2 size={15} />
-                <span>🔊 遊戲音效 (SFX)</span>
+                <span>{t.credits.sfxSection}</span>
               </div>
               <div className="credits-card">
                 <div className="credits-card-header">
-                  <strong>Web Audio API 即時頻率合成</strong>
-                  <span className="credits-tag tag-code">代碼原創</span>
+                  <strong>{t.credits.sfxTitle}</strong>
+                  <span className="credits-tag tag-code">{t.credits.sfxTag}</span>
                 </div>
                 <p className="credits-desc">
-                  跳躍、翻滾、水窪碰撞濺水、愛心/護盾/彩虹道具、Apink 歌曲字母收集與通關慶祝音效，皆由代碼透過瀏覽器標準 Web Audio API 即時振盪器運算合成，無使用任何第三方版權音效包，零版權疑慮。
+                  {t.credits.sfxDesc}
                 </p>
               </div>
             </div>
           </div>
 
           <button className="credits-done-btn" type="button" onClick={() => setCreditsOpen(false)}>
-            我知道了
+            {t.credits.doneBtn}
           </button>
         </section>
       </div>}
