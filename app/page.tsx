@@ -156,6 +156,7 @@ const INVULNERABLE_MS = 2400;
 const LEADERBOARD_STORAGE_KEY = 'panda_rain_leaderboard_v1';
 const LEADERBOARD_HANDLE_KEY = 'panda_rain_player_handle';
 const LEADERBOARD_API_URL = process.env.NEXT_PUBLIC_PANDA_RAIN_LEADERBOARD_URL?.trim() ?? '';
+const LEADERBOARD_REQUEST_TIMEOUT_MS = 8000;
 
 function normalizeLeaderboard(value: unknown): LeaderboardEntry[] {
   if (!Array.isArray(value)) return [];
@@ -203,8 +204,18 @@ function parseLeaderboardResponse(data: LeaderboardResponse) {
   return normalizeLeaderboard(data.leaderboard);
 }
 
+async function fetchWithTimeout(input: RequestInfo | URL, init?: RequestInit, timeoutMs = LEADERBOARD_REQUEST_TIMEOUT_MS) {
+  const controller = new AbortController();
+  const timer = window.setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(input, { ...init, signal: controller.signal });
+  } finally {
+    window.clearTimeout(timer);
+  }
+}
+
 async function fetchCloudLeaderboard() {
-  const response = await fetch(`${LEADERBOARD_API_URL}?action=leaderboard&game=panda_rain&ts=${Date.now()}`, {
+  const response = await fetchWithTimeout(`${LEADERBOARD_API_URL}?action=leaderboard&game=panda_rain&ts=${Date.now()}`, {
     cache: 'no-store',
     credentials: 'omit',
   });
@@ -215,14 +226,25 @@ async function fetchCloudLeaderboard() {
 async function submitCloudScore(payload: ScoreSubmission) {
   const body = JSON.stringify(payload);
   let directError: unknown;
+  let beaconQueued = false;
+
+  // Queue a delivery immediately so iOS can finish sending even if the player
+  // backgrounds or closes the page while the readable POST is still pending.
+  try {
+    beaconQueued = typeof navigator.sendBeacon === 'function'
+      && navigator.sendBeacon(LEADERBOARD_API_URL, body);
+  } catch {
+    // The standard POST below remains the primary readable request.
+  }
 
   try {
-    const response = await fetch(LEADERBOARD_API_URL, {
+    const response = await fetchWithTimeout(LEADERBOARD_API_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
       body,
       cache: 'no-store',
       credentials: 'omit',
+      redirect: 'follow',
     });
     if (!response.ok) throw new Error('score sync failed');
     return parseLeaderboardResponse(await response.json() as LeaderboardResponse);
@@ -230,11 +252,13 @@ async function submitCloudScore(payload: ScoreSubmission) {
     directError = error;
   }
 
-  // Some mobile and in-app browsers send the Apps Script POST but reject its
-  // cross-origin redirect response. Retry as an opaque request, then confirm
-  // the write through the GET endpoint instead of trusting the POST response.
+  // Apps Script redirects ContentService responses to googleusercontent.com.
+  // iOS and in-app browsers can reject or indefinitely stall that redirected
+  // POST response, even when the write itself succeeded. The beacon above does
+  // not depend on reading that response; also try an opaque fetch as fallback.
+  let opaqueFetchSent = false;
   try {
-    await fetch(LEADERBOARD_API_URL, {
+    await fetchWithTimeout(LEADERBOARD_API_URL, {
       method: 'POST',
       mode: 'no-cors',
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
@@ -242,8 +266,14 @@ async function submitCloudScore(payload: ScoreSubmission) {
       cache: 'no-store',
       credentials: 'omit',
       keepalive: true,
-    });
+      redirect: 'follow',
+    }, 5000);
+    opaqueFetchSent = true;
   } catch {
+    // The beacon may still have been accepted by the browser.
+  }
+
+  if (!beaconQueued && !opaqueFetchSent) {
     throw directError instanceof Error ? directError : new Error('score sync failed');
   }
 
@@ -1338,7 +1368,7 @@ export default function Home() {
       setLastSubmittedHandle(handle);
       setLastSubmittedScore(finalScore);
       setIsNewRecordSubmitted(existing ? isBetterScore : false);
-      setScoreSubmitted(localScoreSaved);
+      setScoreSubmitted(!LEADERBOARD_API_URL && localScoreSaved);
       setLeaderboardOpen(true);
 
       if (LEADERBOARD_API_URL) {
@@ -1356,6 +1386,7 @@ export default function Home() {
             setLeaderboardStatus('成績已登上雲端排行榜');
           }
         } catch {
+          setScoreSubmitted(false);
           setLeaderboardStatus(localScoreSaved ? '雲端同步失敗，成績已保存在此裝置' : '成績上傳失敗，請檢查網路後重試');
         }
       }
