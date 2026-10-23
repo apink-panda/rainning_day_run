@@ -92,6 +92,13 @@ if (fs.existsSync(indexPath)) {
   fs.copyFileSync(indexPath, path.join(subDir, '404.html'));
 }
 
+// 8. Copy LICENSE to out_pages
+const licensePath = path.join(rootDir, 'LICENSE');
+if (fs.existsSync(licensePath)) {
+  fs.copyFileSync(licensePath, path.join(outPagesDir, 'LICENSE'));
+  fs.copyFileSync(licensePath, path.join(subDir, 'LICENSE'));
+}
+
 // Fail the build instead of publishing an HTML shell whose JavaScript/CSS is
 // missing. This catches future Vinext output-layout changes before deployment.
 const indexHtml = fs.readFileSync(indexPath, 'utf-8');
