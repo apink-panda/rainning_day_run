@@ -1724,6 +1724,45 @@ export default function Home() {
               {t.result.survivalSummary(time, currentWave)}
             </p>
 
+            <div className="score-submit-group">
+              <input
+                value={playerHandle}
+                onChange={(event) => setPlayerHandle(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' && trimmedHandle && !scoreSubmitting && !hasSubmittedThisRun) {
+                    void submitScore(finalScore);
+                  }
+                }}
+                maxLength={28}
+                placeholder={t.result.inputPlaceholder}
+                aria-label={t.result.inputAria}
+              />
+              <button
+                type="button"
+                className={`score-submit-btn ${isNewRecord ? 'is-new-record' : ''}`}
+                onClick={() => void submitScore(finalScore)}
+                disabled={!trimmedHandle || scoreSubmitting || hasSubmittedThisRun}
+              >
+                {scoreSubmitting
+                  ? t.result.btnSyncing
+                  : hasSubmittedThisRun
+                  ? isNewRecordSubmitted
+                    ? t.result.btnUpdatedBest
+                    : t.result.btnSubmitted
+                  : isNewRecord
+                  ? t.result.btnUpdateScore(finalScore)
+                  : isLowerThanBest
+                  ? t.result.btnKeepBest(previousBest)
+                  : t.result.btnSubmitNew}
+              </button>
+            </div>
+            <Button className="start-button" onClick={() => startGame()}>
+              <RotateCcw size={18} /> {t.result.replayBtn}
+            </Button>
+            <button className="change-panda" onClick={() => { audioManager.stopBgm(); setPhase('ready'); }}>
+              {t.result.changePandaBtn}
+            </button>
+
             {/* Apink Official MV Preview List */}
             <div className="mv-preview-section">
               <div className="mv-section-header">
@@ -1786,45 +1825,6 @@ export default function Home() {
                 })}
               </div>
             </div>
-
-            <div className="score-submit-group">
-              <input
-                value={playerHandle}
-                onChange={(event) => setPlayerHandle(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter' && trimmedHandle && !scoreSubmitting && !hasSubmittedThisRun) {
-                    void submitScore(finalScore);
-                  }
-                }}
-                maxLength={28}
-                placeholder={t.result.inputPlaceholder}
-                aria-label={t.result.inputAria}
-              />
-              <button
-                type="button"
-                className={`score-submit-btn ${isNewRecord ? 'is-new-record' : ''}`}
-                onClick={() => void submitScore(finalScore)}
-                disabled={!trimmedHandle || scoreSubmitting || hasSubmittedThisRun}
-              >
-                {scoreSubmitting
-                  ? t.result.btnSyncing
-                  : hasSubmittedThisRun
-                  ? isNewRecordSubmitted
-                    ? t.result.btnUpdatedBest
-                    : t.result.btnSubmitted
-                  : isNewRecord
-                  ? t.result.btnUpdateScore(finalScore)
-                  : isLowerThanBest
-                  ? t.result.btnKeepBest(previousBest)
-                  : t.result.btnSubmitNew}
-              </button>
-            </div>
-            <Button className="start-button" onClick={() => startGame()}>
-              <RotateCcw size={18} /> {t.result.replayBtn}
-            </Button>
-            <button className="change-panda" onClick={() => { audioManager.stopBgm(); setPhase('ready'); }}>
-              {t.result.changePandaBtn}
-            </button>
           </div>
         );
       })()}

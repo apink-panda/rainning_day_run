@@ -1281,7 +1281,7 @@ button.brand-mark-btn:active {
   font-size: 42px;
 }
 .change-panda {
-  margin-top: 14px;
+  margin: 14px 0 18px;
   padding: 8px 14px;
   border: 0;
   color: #c2d5e6;
@@ -2418,4 +2418,3 @@ button.brand-mark-btn:active {
 .credits-done-btn:active {
   transform: scale(0.97);
 }
-
