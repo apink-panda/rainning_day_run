@@ -3,7 +3,19 @@ export type Language = 'zh' | 'ko';
 export function detectUserLanguage(): Language {
   if (typeof window === 'undefined') return 'zh';
 
-  // 1. Prioritize explicitly saved preference by user
+  // 1. Check URL query param (e.g. ?lang=ko or ?lang=zh)
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const urlLang = params.get('lang')?.toLowerCase();
+    if (urlLang === 'ko' || urlLang === 'zh') {
+      try { localStorage.setItem('panda_language', urlLang); } catch {}
+      return urlLang;
+    }
+  } catch {
+    // Continue
+  }
+
+  // 2. Prioritize explicitly saved preference by user
   try {
     const saved = localStorage.getItem('panda_language');
     if (saved === 'ko' || saved === 'zh') return saved;
@@ -57,6 +69,9 @@ export const translations = {
     rainbowStatus: '狂暴衝刺',
     widePuddleTag: '×2 連跳',
     tapCallout: '×2 連點翻轉 · 路上撿拾道具與歌曲字母',
+    play: {
+      ariaPlay: '輕點跳過石頭與水窪，長水窪連點兩下空中翻轉',
+    },
     ready: {
       badge: 'NEW · WEATHER & ITEMS',
       title: '跳過水窪、收集雨天道具！',
@@ -207,6 +222,9 @@ export const translations = {
     rainbowStatus: '무지개 질주',
     widePuddleTag: '×2 더블점프',
     tapCallout: '×2 더블 탭 회전 · 길에서 아이템과 노래 알파벳 수집',
+    play: {
+      ariaPlay: '가볍게 탭하여 돌과 웅덩이를 뛰어넘고, 넓은 웅덩이는 더블 탭으로 공중회전',
+    },
     ready: {
       badge: 'NEW · WEATHER & ITEMS',
       title: '물웅덩이를 뛰어넘고 비 오는 날 아이템을 모으세요!',

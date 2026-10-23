@@ -1522,7 +1522,7 @@ export default function Home() {
           : [t.result.ranks.tryAgain, '★☆☆'];
         const luckyHitCount = luckyRevealed.filter(Boolean).length;
         const allMvTracks = [...roundSongs];
-        if (luckySong && !allMvTracks.some((t) => t.title === luckySong.title)) {
+        if (luckySong && !allMvTracks.some((track) => track.title === luckySong.title)) {
           allMvTracks.push(luckySong);
         }
 
