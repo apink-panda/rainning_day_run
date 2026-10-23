@@ -61,6 +61,7 @@ jobs:
         uses: actions/deploy-pages@v4
 
       - name: Deploy to gh-pages branch (Branch mode)
+        if: steps.deployment.outcome == 'failure'
         uses: peaceiris/actions-gh-pages@v4
         continue-on-error: true
         with:

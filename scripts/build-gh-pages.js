@@ -46,6 +46,21 @@ fs.mkdirSync(outPagesDir, { recursive: true });
 // Copy all client files to outPagesDir root
 fs.cpSync(clientDir, outPagesDir, { recursive: true });
 
+// Vinext writes framework assets inside the basePath directory when
+// NEXT_PUBLIC_BASE_PATH is set. GitHub Project Pages already strips the
+// repository prefix before resolving files in the published artifact, so the
+// same assets must also exist at the artifact root (`out_pages/_next`).
+const basePathName = String(process.env.NEXT_PUBLIC_BASE_PATH || '')
+  .replace(/^\/+|\/+$/g, '');
+const nestedNextDir = basePathName
+  ? path.join(clientDir, basePathName, '_next')
+  : path.join(clientDir, '_next');
+const rootNextDir = path.join(outPagesDir, '_next');
+if (!fs.existsSync(nestedNextDir)) {
+  throw new Error(`[build-gh-pages] Missing Vinext assets: ${nestedNextDir}`);
+}
+fs.cpSync(nestedNextDir, rootNextDir, { recursive: true });
+
 // Ensure files are also available under /rainning_day_run/ subfolder for robust asset resolution
 const subDir = path.join(outPagesDir, 'rainning_day_run');
 if (!fs.existsSync(subDir)) {
@@ -75,6 +90,18 @@ const indexPath = path.join(outPagesDir, 'index.html');
 if (fs.existsSync(indexPath)) {
   fs.copyFileSync(indexPath, path.join(outPagesDir, '404.html'));
   fs.copyFileSync(indexPath, path.join(subDir, '404.html'));
+}
+
+// Fail the build instead of publishing an HTML shell whose JavaScript/CSS is
+// missing. This catches future Vinext output-layout changes before deployment.
+const indexHtml = fs.readFileSync(indexPath, 'utf-8');
+const frameworkAssets = [...indexHtml.matchAll(/(?:src|href)="([^"]*\/_next\/[^"?]+)[^"]*"/g)]
+  .map((match) => match[1]);
+for (const assetUrl of frameworkAssets) {
+  const artifactPath = assetUrl.replace(/^\/+/, '').replace(`${basePathName}/`, '');
+  if (!fs.existsSync(path.join(outPagesDir, artifactPath))) {
+    throw new Error(`[build-gh-pages] HTML references missing asset: ${assetUrl}`);
+  }
 }
 
 console.log('[build-gh-pages] Successfully built GitHub Pages package in out_pages/ ready for deployment!');
