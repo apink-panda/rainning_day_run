@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { CloudRain, Footprints, Heart, RotateCcw, Timer } from 'lucide-react';
+import { CloudRain, Footprints, Heart, LogOut, RotateCcw, Timer, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 type Panda = { id: string; name: string; color: string; pale: string; sheet: string; footInsets: readonly number[] };
@@ -58,7 +58,7 @@ function ShowcaseSprite({ panda, frame, className = '' }: { panda: Panda; frame:
 
 export default function Home() {
   const [selected, setSelected] = useState(0);
-  const [phase, setPhase] = useState<'ready' | 'playing' | 'over'>('ready');
+  const [phase, setPhase] = useState<'ready' | 'playing' | 'paused' | 'over'>('ready');
   const [score, setScore] = useState(0);
   const [time, setTime] = useState(GAME_SECONDS);
   const [hearts, setHearts] = useState(3);
@@ -78,11 +78,14 @@ export default function Home() {
   const nextId = useRef(1);
   const spawnCount = useRef(0);
   const gameStart = useRef(0);
+  const pausedAt = useRef<number | null>(null);
   const jumpStart = useRef<number | null>(null);
   const flipStart = useRef<number | null>(null);
   const flipActiveRef = useRef(false);
   const lastFlipLandingAt = useRef(0);
   const invulnerableUntil = useRef(0);
+  const hurtUntil = useRef(0);
+  const gameOverAt = useRef(0);
   const heartsRef = useRef(3);
   const hurtTimer = useRef<number | null>(null);
   const invulnerableTimer = useRef<number | null>(null);
@@ -138,10 +141,63 @@ export default function Home() {
     if (invulnerableTimer.current !== null) window.clearTimeout(invulnerableTimer.current);
     if (gameOverTimer.current !== null) window.clearTimeout(gameOverTimer.current);
     hurtTimer.current = null; invulnerableTimer.current = null; gameOverTimer.current = null;
-    invulnerableUntil.current = 0; heartsRef.current = 3;
+    invulnerableUntil.current = 0; hurtUntil.current = 0; gameOverAt.current = 0; heartsRef.current = 3;
     jumpStart.current = null; flipStart.current = null; flipActiveRef.current = false; lastFlipLandingAt.current = 0;
     jumpFrameRef.current = 0; clearedScoreRef.current = 0; spawnCount.current = 0;
+    pausedAt.current = null;
     gameStart.current = performance.now(); lastTime.current = gameStart.current; setPhase('playing');
+  }, []);
+
+  const pauseForExit = useCallback(() => {
+    if (phaseRef.current !== 'playing') return;
+    pausedAt.current = performance.now();
+    if (hurtTimer.current !== null) window.clearTimeout(hurtTimer.current);
+    if (invulnerableTimer.current !== null) window.clearTimeout(invulnerableTimer.current);
+    if (gameOverTimer.current !== null) window.clearTimeout(gameOverTimer.current);
+    hurtTimer.current = null; invulnerableTimer.current = null; gameOverTimer.current = null;
+    phaseRef.current = 'paused';
+    setPhase('paused');
+  }, []);
+
+  const resumeGame = useCallback(() => {
+    const now = performance.now();
+    const pausedDuration = pausedAt.current === null ? 0 : now - pausedAt.current;
+    gameStart.current += pausedDuration;
+    if (jumpStart.current !== null) jumpStart.current += pausedDuration;
+    if (flipStart.current !== null) flipStart.current += pausedDuration;
+    if (lastFlipLandingAt.current > 0) lastFlipLandingAt.current += pausedDuration;
+    if (hurtUntil.current > 0) {
+      hurtUntil.current += pausedDuration;
+      hurtTimer.current = window.setTimeout(() => { setIsHurt(false); hurtUntil.current = 0; hurtTimer.current = null }, Math.max(0, hurtUntil.current - now));
+    }
+    if (invulnerableUntil.current > 0) {
+      invulnerableUntil.current += pausedDuration;
+      invulnerableTimer.current = window.setTimeout(() => { setIsInvulnerable(false); invulnerableUntil.current = 0; invulnerableTimer.current = null }, Math.max(0, invulnerableUntil.current - now));
+    }
+    if (gameOverAt.current > 0) {
+      gameOverAt.current += pausedDuration;
+      gameOverTimer.current = window.setTimeout(() => { phaseRef.current = 'over'; setPhase('over'); gameOverAt.current = 0; gameOverTimer.current = null }, Math.max(0, gameOverAt.current - now));
+    }
+    pausedAt.current = null;
+    lastTime.current = now;
+    phaseRef.current = 'playing';
+    setPhase('playing');
+  }, []);
+
+  const leaveGame = useCallback(() => {
+    pausedAt.current = null;
+    obstaclesRef.current = [];
+    setObstacles([]); setJumpY(0); setJumpFrame(0); setFlipAngle(0);
+    setIsFlipping(false); setHasFlipped(false); setFlipPop(false); setFlash(null);
+    setIsHurt(false); setIsInvulnerable(false);
+    if (hurtTimer.current !== null) window.clearTimeout(hurtTimer.current);
+    if (invulnerableTimer.current !== null) window.clearTimeout(invulnerableTimer.current);
+    if (gameOverTimer.current !== null) window.clearTimeout(gameOverTimer.current);
+    hurtTimer.current = null; invulnerableTimer.current = null; gameOverTimer.current = null;
+    hurtUntil.current = 0; invulnerableUntil.current = 0; gameOverAt.current = 0;
+    jumpStart.current = null; flipStart.current = null; flipActiveRef.current = false;
+    phaseRef.current = 'ready';
+    setPhase('ready');
   }, []);
 
   const jump = useCallback(() => {
@@ -219,15 +275,17 @@ export default function Home() {
       const takeHit = (reason: 'ouch' | 'need-flip') => {
         if (now < invulnerableUntil.current) return;
         invulnerableUntil.current = now + INVULNERABLE_MS;
+        hurtUntil.current = now + HURT_EXPRESSION_MS;
         setIsHurt(true); setIsInvulnerable(true);
         if (hurtTimer.current !== null) window.clearTimeout(hurtTimer.current);
         if (invulnerableTimer.current !== null) window.clearTimeout(invulnerableTimer.current);
-        hurtTimer.current = window.setTimeout(() => { setIsHurt(false); hurtTimer.current = null }, HURT_EXPRESSION_MS);
-        invulnerableTimer.current = window.setTimeout(() => { setIsInvulnerable(false); invulnerableTimer.current = null }, INVULNERABLE_MS);
+        hurtTimer.current = window.setTimeout(() => { setIsHurt(false); hurtUntil.current = 0; hurtTimer.current = null }, HURT_EXPRESSION_MS);
+        invulnerableTimer.current = window.setTimeout(() => { setIsInvulnerable(false); invulnerableUntil.current = 0; invulnerableTimer.current = null }, INVULNERABLE_MS);
         heartsRef.current = Math.max(0, heartsRef.current - 1);
         setHearts(heartsRef.current);
         if (heartsRef.current === 0) {
-          gameOverTimer.current = window.setTimeout(() => { setPhase('over'); gameOverTimer.current = null }, HURT_EXPRESSION_MS);
+          gameOverAt.current = now + HURT_EXPRESSION_MS;
+          gameOverTimer.current = window.setTimeout(() => { phaseRef.current = 'over'; setPhase('over'); gameOverAt.current = 0; gameOverTimer.current = null }, HURT_EXPRESSION_MS);
         }
         setFlash(reason); window.setTimeout(() => setFlash(null), 520);
       };
@@ -301,7 +359,7 @@ export default function Home() {
   const spriteSheetReady = Boolean(loadedSheets[panda.id]);
 
   return <main className="page-shell" style={{ '--panda': panda.color, '--panda-pale': panda.pale } as React.CSSProperties}>
-    <section className="phone-stage" aria-label="熊貓水窪跳跳遊戲">
+    <section className={`phone-stage${phase === 'paused' ? ' game-paused' : ''}`} aria-label="熊貓水窪跳跳遊戲">
       <div className="rain-lines" aria-hidden="true" />
       <header className="game-header"><div className="brand-mark"><CloudRain size={20} /></div><div><p>PANDA RAIN CLUB</p><h1>水窪跳跳</h1></div></header>
 
@@ -318,7 +376,8 @@ export default function Home() {
         <Button className="start-button" onClick={() => startGame()}>開始跳跳 <Footprints size={19} /></Button>
       </div>}
 
-      {phase === 'playing' && <div className={`play-field ${flash === 'need-flip' ? 'ouch' : (flash ?? '')}`} style={{ '--road-duration': `${0.65 * BASE_OBSTACLE_SPEED / obstacleSpeed((GAME_SECONDS - time) * 1000)}s` } as React.CSSProperties} onPointerDown={(event) => { event.preventDefault(); jump() }} role="button" tabIndex={0} onKeyDown={(event) => { if (!event.repeat && (event.code === 'Space' || event.code === 'Enter')) { event.preventDefault(); jump() } }} aria-label="輕點跳過石頭與水窪，長水窪連點兩下空中翻轉">
+      {(phase === 'playing' || phase === 'paused') && <div className={`play-field${phase === 'paused' ? ' paused' : ''} ${flash === 'need-flip' ? 'ouch' : (flash ?? '')}`} style={{ '--road-duration': `${0.65 * BASE_OBSTACLE_SPEED / obstacleSpeed((GAME_SECONDS - time) * 1000)}s` } as React.CSSProperties} onPointerDown={(event) => { event.preventDefault(); jump() }} role="button" tabIndex={phase === 'playing' ? 0 : -1} onKeyDown={(event) => { if (!event.repeat && (event.code === 'Space' || event.code === 'Enter')) { event.preventDefault(); jump() } }} aria-label="輕點跳過石頭與水窪，長水窪連點兩下空中翻轉">
+        <button className="exit-game-button" type="button" onPointerDown={(event) => event.stopPropagation()} onClick={pauseForExit} aria-label="離開遊戲"><X size={17} /><span>離開</span></button>
         <div className="hud"><div><span>距離</span><strong>{score}m</strong></div><div className="time"><Timer size={15} /><strong>{time}</strong><span>秒</span></div><div className="hearts" aria-label={`剩下 ${hearts} 顆愛心`}>{Array.from({ length: 3 }).map((_, i) => <Heart key={i} size={16} fill={i < hearts ? 'currentColor' : 'transparent'} />)}</div></div>
         <div className="frame-badge">{panda.name} · 速度 ×{(obstacleSpeed((GAME_SECONDS - time) * 1000) / BASE_OBSTACLE_SPEED).toFixed(1)} · {isInvulnerable ? '無敵中' : isFlipping ? `FLIP ${Math.min(8, Math.floor(flipAngle / 45) + 1)}/8` : (jumpFrame >= 5 ? `JUMP ${jumpFrame - 4}/5` : `RUN ${jumpFrame + 1}/5`)}</div>
         {flipPop && <div className="game-pop flip-text">空中翻轉！ 跳更遠</div>}
@@ -334,6 +393,17 @@ export default function Home() {
           {isHurt && <span className="hurt-drop" aria-hidden="true">💧</span>}
         </div>
         <div className="tap-callout"><span>×2</span> 連點翻轉 · 跳得更遠</div>
+      </div>}
+
+      {phase === 'paused' && <div className="exit-confirm-backdrop" role="presentation" onKeyDown={(event) => { if (event.key === 'Escape') resumeGame() }}>
+        <div className="exit-confirm" role="dialog" aria-modal="true" aria-labelledby="exit-confirm-title" aria-describedby="exit-confirm-description">
+          <div className="exit-confirm-icon"><LogOut size={24} /></div>
+          <p>遊戲已暫停</p>
+          <h2 id="exit-confirm-title">要離開這場遊戲嗎？</h2>
+          <span id="exit-confirm-description">目前的距離與剩餘時間將不會保留。</span>
+          <Button className="resume-button" onClick={resumeGame} autoFocus>繼續遊戲</Button>
+          <button className="confirm-exit-button" type="button" onClick={leaveGame}>離開遊戲</button>
+        </div>
       </div>}
 
       {phase === 'over' && <div className="result-screen">
