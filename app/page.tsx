@@ -17,6 +17,8 @@ import { Language, detectUserLanguage, translations } from './i18n';
 type Panda = { id: string; name: string; color: string; pale: string; sheet: string; footInsets: readonly number[] };
 type Obstacle = { id: number; kind: 'puddle' | 'rock' | 'wide'; x: number; width: number; settled: boolean; engaged: boolean; flipped: boolean };
 type LeaderboardEntry = { handle: string; score: number; panda: string; rank?: number };
+type LeaderboardResponse = { game?: string; leaderboard?: unknown; error?: unknown };
+type ScoreSubmission = { game: 'panda_rain'; handle: string; score: number; panda: string };
 type WebGameContext = { registerTool: (tool: { name: string; title: string; description: string; inputSchema: object; annotations: { readOnlyHint: boolean; untrustedContentHint: boolean }; execute: (input: unknown) => unknown }, options?: { signal?: AbortSignal }) => void | Promise<void> };
 type Weather = 'day' | 'sunset' | 'storm' | 'night';
 type PickupKind = 'shield' | 'heal' | 'rainbow' | 'star';
@@ -183,6 +185,83 @@ function maskHandle(handle: string) {
   return `${value.slice(0, 1)}${'＊'.repeat(Math.min(4, value.length - 2))}${value.slice(-1)}`;
 }
 
+function saveToLocalStorage(key: string, value: string) {
+  try {
+    window.localStorage.setItem(key, value);
+    return true;
+  } catch {
+    // Storage is commonly unavailable in private mode and embedded mobile browsers.
+    return false;
+  }
+}
+
+function parseLeaderboardResponse(data: LeaderboardResponse) {
+  if (data.error) throw new Error(typeof data.error === 'string' ? data.error : 'leaderboard request failed');
+  if (data.game !== 'panda_rain' || !Array.isArray(data.leaderboard)) {
+    throw new Error('unexpected leaderboard response');
+  }
+  return normalizeLeaderboard(data.leaderboard);
+}
+
+async function fetchCloudLeaderboard() {
+  const response = await fetch(`${LEADERBOARD_API_URL}?action=leaderboard&game=panda_rain&ts=${Date.now()}`, {
+    cache: 'no-store',
+    credentials: 'omit',
+  });
+  if (!response.ok) throw new Error('leaderboard request failed');
+  return parseLeaderboardResponse(await response.json() as LeaderboardResponse);
+}
+
+async function submitCloudScore(payload: ScoreSubmission) {
+  const body = JSON.stringify(payload);
+  let directError: unknown;
+
+  try {
+    const response = await fetch(LEADERBOARD_API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body,
+      cache: 'no-store',
+      credentials: 'omit',
+    });
+    if (!response.ok) throw new Error('score sync failed');
+    return parseLeaderboardResponse(await response.json() as LeaderboardResponse);
+  } catch (error) {
+    directError = error;
+  }
+
+  // Some mobile and in-app browsers send the Apps Script POST but reject its
+  // cross-origin redirect response. Retry as an opaque request, then confirm
+  // the write through the GET endpoint instead of trusting the POST response.
+  try {
+    await fetch(LEADERBOARD_API_URL, {
+      method: 'POST',
+      mode: 'no-cors',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body,
+      cache: 'no-store',
+      credentials: 'omit',
+      keepalive: true,
+    });
+  } catch {
+    throw directError instanceof Error ? directError : new Error('score sync failed');
+  }
+
+  const verificationDelays = [350, 700, 1200, 1800];
+  for (const delayMs of verificationDelays) {
+    await new Promise((resolve) => window.setTimeout(resolve, delayMs));
+    try {
+      const entries = await fetchCloudLeaderboard();
+      const saved = entries.find((entry) => entry.handle.toLowerCase() === payload.handle.toLowerCase());
+      if (saved && saved.score >= payload.score) return entries;
+    } catch {
+      // Apps Script can take a moment to expose the updated sheet; retry below.
+    }
+  }
+
+  throw directError instanceof Error ? directError : new Error('score sync could not be verified');
+}
+
 function Sprite({ panda, frame, className = '', offset = [0, 0] }: { panda: Panda; frame: number; className?: string; offset?: readonly [number, number] }) {
   return <span className={`panda-sprite ${className}`} style={{ backgroundImage: `url('${panda.sheet}')`, '--frame-x': `${(frame % 5) * 25}%`, '--row-y': frame >= 5 ? '100%' : '0%', transform: `translate(${offset[0]}px, ${offset[1]}px)` } as React.CSSProperties} aria-hidden="true" />;
 }
@@ -305,12 +384,7 @@ export default function Home() {
     }
     if (!LEADERBOARD_API_URL) return;
     try {
-      const response = await fetch(`${LEADERBOARD_API_URL}?action=leaderboard&game=panda_rain&ts=${Date.now()}`, { cache: 'no-store' });
-      if (!response.ok) return;
-      const data = await response.json() as { game?: string; leaderboard?: unknown };
-      if (data.game === 'panda_rain' && Array.isArray(data.leaderboard)) {
-        setLeaderboardEntries(normalizeLeaderboard(data.leaderboard));
-      }
+      setLeaderboardEntries(await fetchCloudLeaderboard());
     } catch {
       // Keep local if cloud fails
     }
@@ -1190,11 +1264,7 @@ export default function Home() {
     if (!LEADERBOARD_API_URL) return;
     setLeaderboardLoading(true);
     try {
-      const response = await fetch(`${LEADERBOARD_API_URL}?action=leaderboard&game=panda_rain&ts=${Date.now()}`, { cache: 'no-store' });
-      if (!response.ok) throw new Error('leaderboard request failed');
-      const data = await response.json() as { game?: string; leaderboard?: unknown };
-      if (data.game !== 'panda_rain') throw new Error('unexpected leaderboard');
-      setLeaderboardEntries(normalizeLeaderboard(data.leaderboard));
+      setLeaderboardEntries(await fetchCloudLeaderboard());
       setLeaderboardStatus('雲端排行榜');
     } catch {
       setLeaderboardStatus('連線失敗，顯示此裝置紀錄');
@@ -1209,7 +1279,7 @@ export default function Home() {
     const finalScore = typeof overrideScore === 'number' ? overrideScore : score;
     setScoreSubmitting(true);
     try {
-      window.localStorage.setItem(LEADERBOARD_HANDLE_KEY, handle);
+      saveToLocalStorage(LEADERBOARD_HANDLE_KEY, handle);
       const localEntries = readLocalLeaderboard();
       const existing = localEntries.find((item) => item.handle.toLowerCase() === handle.toLowerCase());
       const isBetterScore = !existing || finalScore > existing.score;
@@ -1222,30 +1292,23 @@ export default function Home() {
           )
         : [...localEntries, { handle, score: finalScore, panda: panda.id }];
       const normalizedLocal = normalizeLeaderboard(nextLocal);
-      window.localStorage.setItem(
+      const localScoreSaved = saveToLocalStorage(
         LEADERBOARD_STORAGE_KEY,
         JSON.stringify(normalizedLocal.map(({ handle: savedHandle, score: savedScore, panda: savedPanda }) => ({ handle: savedHandle, score: savedScore, panda: savedPanda })))
       );
       setLeaderboardEntries(normalizedLocal);
-      setLeaderboardStatus(LEADERBOARD_API_URL ? '正在同步雨天排行榜…' : '已儲存在此裝置');
+      setLeaderboardStatus(LEADERBOARD_API_URL ? '正在同步雨天排行榜…' : localScoreSaved ? '已儲存在此裝置' : '此瀏覽器無法儲存成績，請稍後重試');
       setLastSubmittedHandle(handle);
       setLastSubmittedScore(finalScore);
       setIsNewRecordSubmitted(existing ? isBetterScore : false);
-      setScoreSubmitted(true);
+      setScoreSubmitted(localScoreSaved);
       setLeaderboardOpen(true);
 
       if (LEADERBOARD_API_URL) {
         try {
-          const response = await fetch(LEADERBOARD_API_URL, {
-            method: 'POST',
-            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-            body: JSON.stringify({ game: 'panda_rain', handle, score: finalScore, panda: panda.id }),
-          });
-          if (!response.ok) throw new Error('score sync failed');
-          const data = await response.json() as { game?: string; leaderboard?: unknown };
-          if (data.game !== 'panda_rain') throw new Error('unexpected leaderboard');
-          const normalizedCloud = normalizeLeaderboard(data.leaderboard);
+          const normalizedCloud = await submitCloudScore({ game: 'panda_rain', handle, score: finalScore, panda: panda.id });
           setLeaderboardEntries(normalizedCloud);
+          setScoreSubmitted(true);
           if (existing) {
             if (isBetterScore) {
               setLeaderboardStatus(`🎉 成功更新最高紀錄為 ${finalScore}m！`);
@@ -1256,7 +1319,7 @@ export default function Home() {
             setLeaderboardStatus('成績已登上雲端排行榜');
           }
         } catch {
-          setLeaderboardStatus('雲端同步失敗，成績已保存在此裝置');
+          setLeaderboardStatus(localScoreSaved ? '雲端同步失敗，成績已保存在此裝置' : '成績上傳失敗，請檢查網路後重試');
         }
       }
     } finally {
