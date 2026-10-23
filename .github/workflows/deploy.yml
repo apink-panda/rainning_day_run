@@ -8,8 +8,6 @@ on:
 
 permissions:
   contents: write
-  pages: write
-  id-token: write
 
 concurrency:
   group: 'pages'
@@ -17,9 +15,6 @@ concurrency:
 
 jobs:
   build-and-deploy:
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -47,23 +42,8 @@ jobs:
           NEXT_PUBLIC_BASE_PATH: /rainning_day_run
           NEXT_PUBLIC_PANDA_RAIN_LEADERBOARD_URL: ${{ secrets.NEXT_PUBLIC_PANDA_RAIN_LEADERBOARD_URL || 'https://script.google.com/macros/s/AKfycbyayumZf8wB3CVNxxkVwGeTZcXyl73In2xyNY-MHEkMUuBjhgMFQJ2Cei5ojRSZtJsh8w/exec' }}
 
-      - name: Setup Pages
-        uses: actions/configure-pages@v5
-
-      - name: Upload artifact
-        uses: actions/upload-pages-artifact@v3
-        with:
-          path: out_pages
-
-      - name: Deploy to GitHub Pages (Actions mode)
-        id: deployment
-        continue-on-error: true
-        uses: actions/deploy-pages@v4
-
-      - name: Deploy to gh-pages branch (Branch mode)
-        if: steps.deployment.outcome == 'failure'
+      - name: Deploy to gh-pages branch
         uses: peaceiris/actions-gh-pages@v4
-        continue-on-error: true
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./out_pages
